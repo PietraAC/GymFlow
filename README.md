@@ -50,9 +50,9 @@ flowchart LR
     GYM -->|gym_db| PG
     WORKOUT -->|workout_db| PG
     ASSISTANT -->|assistant_db| PG
-    GYM -. EquipmentAvailabilityChanged.v1 .-> MQ
-    MQ -. idempotent consumer .-> WORKOUT
-    ASSISTANT -. provider interface .-> GEMINI
+    GYM -.->|EquipmentAvailabilityChanged.v1| MQ
+    MQ -.->|idempotent consumer| WORKOUT
+    ASSISTANT -.->|provider interface| GEMINI
 ```
 
 Each service owns its data and Flyway migrations. Services never access another service's database and do not share JPA entities. Cross-service references are stored as UUIDs and validated through APIs.
