@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: workout-service
+  profiles:
+    default: local
+  datasource:
+    url: ${WORKOUT_DB_URL:jdbc:postgresql://localhost:5432/workout_db}
+    username: ${WORKOUT_DB_USERNAME:workout_service}
+    password: ${WORKOUT_DB_PASSWORD:}
+  flyway:
+    enabled: true
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER:http://localhost:8080/realms/gymflow}
+app.security.audience: ${JWT_AUDIENCE:workout-service}
+app.clients.gym-service:
+  base-url: ${GYM_SERVICE_URL:http://localhost:8081}
+  connect-timeout: ${GYM_SERVICE_CONNECT_TIMEOUT:2s}
+  read-timeout: ${GYM_SERVICE_READ_TIMEOUT:3s}
+server.port: ${SERVER_PORT:8082}
+server.error.include-stacktrace: never
+management:
+  endpoints.web.exposure.include: health,info
+  endpoint.health.probes.enabled: true
+springdoc:
+  swagger-ui.path: /swagger-ui.html

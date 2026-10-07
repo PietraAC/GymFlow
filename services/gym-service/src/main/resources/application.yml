@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: gym-service
+  profiles:
+    default: local
+  datasource:
+    url: ${GYM_DB_URL:jdbc:postgresql://localhost:5432/gym_db}
+    username: ${GYM_DB_USERNAME:gym_service}
+    password: ${GYM_DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER:http://localhost:8080/realms/gymflow}
+app:
+  security:
+    audience: ${JWT_AUDIENCE:gym-service}
+server:
+  port: ${SERVER_PORT:8081}
+  error:
+    include-message: never
+    include-stacktrace: never
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+

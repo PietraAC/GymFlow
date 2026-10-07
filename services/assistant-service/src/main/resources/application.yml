@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: assistant-service
+  profiles:
+    default: local
+  datasource:
+    url: ${ASSISTANT_DB_URL:jdbc:postgresql://localhost:5432/assistant_db}
+    username: ${ASSISTANT_DB_USERNAME:assistant_service}
+    password: ${ASSISTANT_DB_PASSWORD:}
+  flyway:
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER:http://localhost:8080/realms/gymflow}
+app.security.audience: ${JWT_AUDIENCE:assistant-service}
+server.port: ${SERVER_PORT:8083}
+management:
+  endpoints.web.exposure.include: health,info
+  endpoint.health.probes.enabled: true
+

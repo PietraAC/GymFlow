@@ -1,0 +1,102 @@
+openapi: 3.1.0
+info:
+  title: GymFlow Workout API
+  version: v1
+  description: Student profile and manual workout aggregate, always bound to the JWT subject.
+servers:
+  - url: http://localhost:8082
+security: [{ bearerAuth: [] }]
+paths:
+  /api/v1/me/profile:
+    get:
+      summary: Gets the authenticated student's profile
+      responses: {'200': {description: Profile}, '404': {$ref: '#/components/responses/Problem'}}
+    put:
+      summary: Creates or replaces the authenticated student's profile
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProfileRequest'}}}}
+      responses: {'200': {description: Saved profile}, '400': {$ref: '#/components/responses/Problem'}}
+  /api/v1/me/plans:
+    get:
+      summary: Lists the authenticated student's plans
+      responses: {'200': {description: Summary list}}
+    post:
+      summary: Creates a draft plan
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreatePlan'}}}}
+      responses: {'201': {description: Created draft}, '400': {$ref: '#/components/responses/Problem'}}
+  /api/v1/me/plans/{planId}:
+    parameters: [{name: planId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      summary: Gets the aggregate and current eligibility warnings
+      responses: {'200': {description: Plan}, '404': {$ref: '#/components/responses/Problem'}}
+    put:
+      summary: Transactionally replaces a draft and revalidates the catalog
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdatePlan'}}}}
+      responses: {'200': {description: Saved draft}, '409': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
+  /api/v1/me/plans/{planId}/activate:
+    post:
+      summary: Revalidates and activates a complete plan
+      parameters: [{name: planId, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Transition'}}}}
+      responses: {'200': {description: Active plan}, '409': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
+  /api/v1/me/plans/{planId}/archive:
+    post:
+      summary: Archives a plan
+      parameters: [{name: planId, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Transition'}}}}
+      responses: {'200': {description: Archived plan}, '409': {$ref: '#/components/responses/Problem'}}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+  responses:
+    Problem: {description: ProblemDetail, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+  schemas:
+    ProfileRequest:
+      type: object
+      required: [goal, experienceLevel, daysPerWeek, sessionDurationMinutes]
+      properties:
+        goal: {type: string, enum: [HYPERTROPHY, STRENGTH, GENERAL_FITNESS, ENDURANCE]}
+        experienceLevel: {type: string, enum: [BEGINNER, INTERMEDIATE, ADVANCED]}
+        daysPerWeek: {type: integer, minimum: 1, maximum: 7}
+        sessionDurationMinutes: {type: integer, minimum: 10, maximum: 180}
+        preferredEquipmentTypeIds: {type: array, maxItems: 100, uniqueItems: true, items: {type: string, format: uuid}}
+    CreatePlan:
+      type: object
+      required: [unitId, name]
+      properties: {unitId: {type: string, format: uuid}, name: {type: string, maxLength: 120}}
+    UpdatePlan:
+      type: object
+      required: [version, unitId, name, days]
+      properties:
+        version: {type: integer, format: int64, minimum: 0}
+        unitId: {type: string, format: uuid}
+        name: {type: string, maxLength: 120}
+        days: {type: array, maxItems: 7, items: {$ref: '#/components/schemas/WorkoutDay'}}
+    WorkoutDay:
+      type: object
+      required: [position, name, items]
+      properties:
+        id: {type: [string, 'null'], format: uuid}
+        position: {type: integer, minimum: 1, maximum: 7}
+        name: {type: string, maxLength: 80}
+        items: {type: array, items: {$ref: '#/components/schemas/WorkoutItem'}}
+    WorkoutItem:
+      type: object
+      required: [exerciseId, position]
+      properties:
+        id: {type: [string, 'null'], format: uuid}
+        exerciseId: {type: string, format: uuid}
+        position: {type: integer, minimum: 1}
+        sets: {type: [integer, 'null'], minimum: 1, maximum: 10}
+        repetitionMin: {type: [integer, 'null'], minimum: 1, maximum: 100}
+        repetitionMax: {type: [integer, 'null'], minimum: 1, maximum: 100}
+        durationSeconds: {type: [integer, 'null'], minimum: 5, maximum: 1800}
+        restSeconds: {type: [integer, 'null'], minimum: 0, maximum: 600}
+        optionalLoadKg: {type: [number, 'null'], minimum: 0}
+        notes: {type: [string, 'null'], maxLength: 500}
+    Transition:
+      type: object
+      required: [version]
+      properties: {version: {type: integer, format: int64, minimum: 0}}
+    Problem:
+      type: object
+      properties: {type: {type: string, format: uri}, title: {type: string}, status: {type: integer}, detail: {type: string}, instance: {type: string, format: uri}}

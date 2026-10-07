@@ -1,0 +1,1 @@
+-- Intencionalmente sem tabelas de negócio: o domínio do assistente começa na Etapa 3.

@@ -1,0 +1,217 @@
+openapi: 3.1.0
+info:
+  title: GymFlow Gym Service API
+  version: v1
+  description: Gyms, branches, inventory, approved catalog, and eligibility.
+servers:
+  - url: http://localhost:8081
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/gyms:
+    get:
+      summary: Lists gyms visible to the authenticated user
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: sort
+          in: query
+          schema: { type: string, default: 'name,asc' }
+      responses:
+        '200': { $ref: '#/components/responses/PagedResponse' }
+        '401': { $ref: '#/components/responses/Problem' }
+    post:
+      summary: Creates a gym and links the authenticated GYM_ADMIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateGymRequest' }
+      responses:
+        '201':
+          description: Created
+          content: { application/json: { schema: { $ref: '#/components/schemas/Gym' } } }
+        '403': { $ref: '#/components/responses/Problem' }
+  /api/v1/gyms/{gymId}/units:
+    parameters:
+      - $ref: '#/components/parameters/GymId'
+    get:
+      summary: Lists active branches or all branches for a linked administrator
+      responses:
+        '200': { $ref: '#/components/responses/PagedResponse' }
+    post:
+      summary: Creates a branch in the managed gym
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUnitRequest' }
+      responses:
+        '201':
+          description: Created
+          content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } }
+        '403': { $ref: '#/components/responses/Problem' }
+  /api/v1/units/{unitId}:
+    parameters:
+      - $ref: '#/components/parameters/UnitId'
+    get:
+      summary: Gets a visible branch
+      responses:
+        '200':
+          description: Branch
+          content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      summary: Updates a branch after deriving and authorizing its gym
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUnitRequest' }
+      responses:
+        '200':
+          description: Updated
+          content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } }
+        '403': { $ref: '#/components/responses/Problem' }
+  /api/v1/equipment-types:
+    get:
+      summary: Lists active equipment types
+      responses:
+        '200': { $ref: '#/components/responses/PagedResponse' }
+  /api/v1/units/{unitId}/equipment:
+    parameters:
+      - $ref: '#/components/parameters/UnitId'
+    get:
+      summary: Lists branch inventory
+      responses:
+        '200':
+          description: Inventory
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/UnitEquipment' } }
+  /api/v1/units/{unitId}/equipment/{equipmentTypeId}:
+    parameters:
+      - $ref: '#/components/parameters/UnitId'
+      - name: equipmentTypeId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      summary: Upserts inventory with optimistic concurrency control
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpsertUnitEquipmentRequest' }
+      responses:
+        '200':
+          description: Persisted inventory
+          content: { application/json: { schema: { $ref: '#/components/schemas/UnitEquipment' } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/v1/exercises:
+    get:
+      summary: Queries the active global catalog
+      parameters:
+        - { name: muscleGroup, in: query, schema: { type: string } }
+        - { name: kind, in: query, schema: { $ref: '#/components/schemas/ExerciseKind' } }
+        - { name: difficulty, in: query, schema: { type: string, enum: [BEGINNER, INTERMEDIATE, ADVANCED] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { $ref: '#/components/responses/PagedResponse' }
+  /api/v1/units/{unitId}/eligible-exercises:
+    parameters:
+      - $ref: '#/components/parameters/UnitId'
+    get:
+      summary: Lists exercises with at least one fully satisfied requirement option
+      responses:
+        '200': { $ref: '#/components/responses/PagedResponse' }
+  /api/v1/units/{unitId}/exercise-eligibility:
+    parameters:
+      - $ref: '#/components/parameters/UnitId'
+    post:
+      summary: Validates up to 100 exercise IDs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [exerciseIds]
+              properties:
+                exerciseIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  uniqueItems: true
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Result per exercise
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EligibilityResponse' }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    GymId: { name: gymId, in: path, required: true, schema: { type: string, format: uuid } }
+    UnitId: { name: unitId, in: path, required: true, schema: { type: string, format: uuid } }
+    Page: { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+    Size: { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+  responses:
+    Problem:
+      description: RFC 9457 Problem Details response
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    PagedResponse:
+      description: Result page
+      content: { application/json: { schema: { $ref: '#/components/schemas/PageResponse' } } }
+  schemas:
+    CreateGymRequest:
+      type: object
+      required: [name]
+      properties: { name: { type: string, maxLength: 120 }, active: { type: boolean, default: true } }
+    Gym:
+      type: object
+      properties: { id: { type: string, format: uuid }, name: { type: string }, active: { type: boolean } }
+    CreateUnitRequest:
+      type: object
+      required: [name, city]
+      properties: { name: { type: string, maxLength: 120 }, city: { type: string, maxLength: 100 }, active: { type: boolean } }
+    UpdateUnitRequest:
+      type: object
+      properties: { name: { type: string, maxLength: 120 }, city: { type: string, maxLength: 100 }, active: { type: boolean } }
+    Unit:
+      type: object
+      properties: { id: { type: string, format: uuid }, gymId: { type: string, format: uuid }, name: { type: string }, city: { type: string }, active: { type: boolean } }
+    UpsertUnitEquipmentRequest:
+      type: object
+      required: [totalQuantity, availableQuantity]
+      properties:
+        totalQuantity: { type: integer, minimum: 0, maximum: 10000 }
+        availableQuantity: { type: integer, minimum: 0, maximum: 10000 }
+        notes: { type: [string, 'null'], maxLength: 500 }
+        version: { type: [integer, 'null'], format: int64, description: Required for updates; omitted on creation }
+    UnitEquipment:
+      type: object
+      properties: { id: { type: string, format: uuid }, unitId: { type: string, format: uuid }, equipmentTypeId: { type: string, format: uuid }, equipmentTypeName: { type: string }, totalQuantity: { type: integer }, availableQuantity: { type: integer }, version: { type: integer, format: int64 } }
+    ExerciseKind: { type: string, enum: [STRENGTH, WARMUP, STRETCHING] }
+    EligibilityResponse:
+      type: object
+      properties:
+        unitId: { type: string, format: uuid }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              exerciseId: { type: string, format: uuid }
+              kind: { oneOf: [{ $ref: '#/components/schemas/ExerciseKind' }, { type: 'null' }], description: Null only when the exercise does not exist }
+              eligible: { type: boolean }
+              reasons: { type: array, items: { type: string, enum: [EXERCISE_NOT_FOUND_OR_INACTIVE, MISSING_EQUIPMENT, EQUIPMENT_UNAVAILABLE, EQUIPMENT_TYPE_INACTIVE] } }
+    PageResponse:
+      type: object
+      properties: { content: { type: array, items: {} }, page: { type: integer }, size: { type: integer }, totalElements: { type: integer }, totalPages: { type: integer } }
+    Problem:
+      type: object
+      properties: { type: { type: string, format: uri }, title: { type: string }, status: { type: integer }, detail: { type: string }, instance: { type: string, format: uri } }
