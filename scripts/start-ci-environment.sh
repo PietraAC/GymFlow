@@ -45,7 +45,11 @@ nohup java -jar services/workout-service/target/workout-service-0.1.0.jar >.run/
 echo $! >.run/workout-service.pid
 nohup java -jar services/assistant-service/target/assistant-service-0.1.0.jar >.run/assistant-service.log 2>&1 &
 echo $! >.run/assistant-service.pid
-(cd frontend && nohup npm start -- --host 0.0.0.0 >../.run/frontend.log 2>&1 & echo $! >../.run/frontend.pid)
+(
+  cd frontend
+  nohup npm start -- --host 0.0.0.0 >../.run/frontend.log 2>&1 &
+  echo $! >../.run/frontend.pid
+)
 
 wait_url gym-service http://localhost:8081/actuator/health
 wait_url workout-service http://localhost:8082/actuator/health
