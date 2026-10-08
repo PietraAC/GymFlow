@@ -7,7 +7,7 @@ import { errorMessage } from '../../core/error-message';
 @Component({
   imports: [FormsModule], changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <header class="page-heading"><div><div class="eyebrow">Preferências pessoais</div><h1>Meu perfil de treino</h1><p>Esses dados orientarão o assistente na próxima etapa; hoje ajudam a organizar sua rotina.</p></div></header>
+    <header class="page-heading"><div><div class="eyebrow">Preferências pessoais</div><h1>Meu perfil de treino</h1><p>Esses dados orientam o assistente ao analisar seu rascunho semanal.</p></div></header>
     @if (loading()) { <div class="card muted">Carregando perfil…</div> }
     @else {
       <form class="card stack" (ngSubmit)="save()">

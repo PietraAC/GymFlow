@@ -50,6 +50,26 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  rabbitmq:
+    image: rabbitmq:4.3.6-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-gymflow}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-gymflow-local}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-gymflow}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    restart: unless-stopped
+
 volumes:
   postgres-data:
+  rabbitmq-data:
 

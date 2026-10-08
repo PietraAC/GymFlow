@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gymflow.local/schemas/equipment-availability-changed-v1.schema.json",
+  "title": "EquipmentAvailabilityChanged.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "eventType",
+    "schemaVersion",
+    "occurredAt",
+    "gymId",
+    "unitId",
+    "equipmentTypeId",
+    "availableQuantity",
+    "aggregateVersion"
+  ],
+  "properties": {
+    "eventId": {"type": "string", "format": "uuid"},
+    "eventType": {"const": "EquipmentAvailabilityChanged.v1"},
+    "schemaVersion": {"const": 1},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "gymId": {"type": "string", "format": "uuid"},
+    "unitId": {"type": "string", "format": "uuid"},
+    "equipmentTypeId": {"type": "string", "format": "uuid"},
+    "availableQuantity": {"type": "integer", "minimum": 0},
+    "aggregateVersion": {"type": "integer", "minimum": 0}
+  }
+}

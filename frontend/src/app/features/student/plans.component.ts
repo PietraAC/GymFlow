@@ -23,7 +23,7 @@ import { errorMessage } from '../../core/error-message';
         <h2>Planos salvos</h2>
         @if(loading()){<p class="muted">Carregando planos…</p>}
         @else if(!plans().length){<div class="empty">Você ainda não criou um plano.</div>}
-        @else{<ul class="list">@for(plan of plans();track plan.id){<li class="list-item"><div><strong>{{plan.name}}</strong><div class="muted">{{plan.dayCount}} dia(s) · atualizado {{plan.updatedAt|date:'short'}}</div></div><div class="toolbar"><span class="badge" [class.active]="plan.status==='ACTIVE'" [class.archived]="plan.status==='ARCHIVED'">{{status(plan.status)}}</span><a class="button secondary compact" [routerLink]="['/student/plans',plan.id]">Abrir</a></div></li>}</ul>}
+        @else{<ul class="list">@for(plan of plans();track plan.id){<li class="list-item"><div><strong>{{plan.name}}</strong><div class="muted">{{plan.dayCount}} dia(s) · atualizado {{plan.updatedAt|date:'short'}}</div>@if(plan.inventoryRevalidationRequired){<div class="muted">Inventário alterado · revalidação pendente</div>}</div><div class="toolbar"><span class="badge" [class.active]="plan.status==='ACTIVE'" [class.archived]="plan.status==='ARCHIVED'">{{status(plan.status)}}</span><a class="button secondary compact" [routerLink]="['/student/plans',plan.id]">Abrir</a></div></li>}</ul>}
       </section>
     </div>
   `

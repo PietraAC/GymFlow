@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.gymflow.workout.integration.gym.GymCatalogClient;
 import com.gymflow.workout.shared.error.ConflictException;
@@ -13,19 +14,24 @@ import java.util.List;
 import com.gymflow.workout.shared.error.ResourceNotFoundException;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import com.gymflow.workout.integration.assistant.AssistantSuggestionClient;
+import com.gymflow.workout.suggestion.SuggestionApplicationRepository;
 
 class WorkoutPlanServiceTest {
     @Mock WorkoutPlanRepository repository;
     @Mock GymCatalogClient catalog;
+    @Mock AssistantSuggestionClient suggestions;
+    @Mock SuggestionApplicationRepository applications;
     private WorkoutPlanService service;
 
     @BeforeEach void setUp() {
         MockitoAnnotations.openMocks(this);
-        service = new WorkoutPlanService(repository, catalog, new WorkoutPlanValidator());
+        service = new WorkoutPlanService(repository, catalog, new WorkoutPlanValidator(), suggestions, applications);
     }
 
     @Test
@@ -72,6 +78,31 @@ class WorkoutPlanServiceTest {
         assertThatThrownBy(() -> service.update("student-a", id, request(unitId, exerciseId), "token"))
             .isInstanceOf(DependencyUnavailableException.class);
         verify(repository, never()).saveAndFlush(plan);
+    }
+
+    @Test
+    void appliesAValidatedSuggestionAndRecordsIdempotency() {
+        UUID planId = UUID.randomUUID(), unitId = UUID.randomUUID(), dayId = UUID.randomUUID();
+        UUID currentExercise = UUID.randomUUID(), suggestedExercise = UUID.randomUUID(), suggestionId = UUID.randomUUID();
+        WorkoutPlan plan = new WorkoutPlan("student-a", unitId, "Plano");
+        plan.replace(unitId, "Plano", List.of(new WorkoutDay(dayId, 1, "Dia 1",
+            List.of(new WorkoutItem(null, currentExercise, 1, 3, 8, 12, null, 60, null, null)))));
+        when(repository.findOneByIdAndIdentitySubject(planId, "student-a")).thenReturn(Optional.of(plan));
+        when(applications.findByIdentitySubjectAndIdempotencyKey("student-a", "key-1")).thenReturn(Optional.empty());
+        var change = new AssistantSuggestionClient.Change(AssistantSuggestionClient.Operation.ADD, dayId, null,
+            suggestedExercise, 2, 3, 8, 12, null, 60, "Complemento");
+        when(suggestions.get(suggestionId, "token")).thenReturn(new AssistantSuggestionClient.Suggestion(suggestionId,
+            planId, 0, "fp", "AVAILABLE", "DEMO", "Explicação", List.of(), List.of(change), Instant.now(), Instant.now().plusSeconds(600)));
+        when(catalog.validate(org.mockito.ArgumentMatchers.eq(unitId), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("token")))
+            .thenReturn(new GymCatalogClient.EligibilityResult(unitId, List.of(
+                new GymCatalogClient.EligibilityItem(currentExercise, ExerciseKind.STRENGTH, true, java.util.Set.of()),
+                new GymCatalogClient.EligibilityItem(suggestedExercise, ExerciseKind.STRENGTH, true, java.util.Set.of()))));
+
+        PlanModels.PlanResponse response = service.applySuggestion("student-a", planId,
+            new PlanModels.ApplySuggestionRequest(suggestionId, 0L), "key-1", "token");
+
+        assertThat(response.days().getFirst().items()).hasSize(2);
+        verify(applications).saveAndFlush(org.mockito.ArgumentMatchers.any());
     }
 
     private PlanModels.UpdatePlanRequest request(UUID unitId, UUID exerciseId) {

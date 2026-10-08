@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -45,5 +46,11 @@ public class WorkoutPlanController {
     public PlanModels.PlanResponse archive(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
                                            @Valid @RequestBody PlanModels.TransitionRequest request) {
         return service.archive(jwt.getSubject(), id, request.version());
+    }
+    @PostMapping("/{id}/apply-suggestion")
+    public PlanModels.PlanResponse applySuggestion(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                                                   @RequestHeader("Idempotency-Key") String idempotencyKey,
+                                                   @Valid @RequestBody PlanModels.ApplySuggestionRequest request) {
+        return service.applySuggestion(jwt.getSubject(), id, request, idempotencyKey, jwt.getTokenValue());
     }
 }

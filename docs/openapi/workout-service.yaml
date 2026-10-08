@@ -18,32 +18,40 @@ paths:
   /api/v1/me/plans:
     get:
       summary: Lists the authenticated student's plans
-      responses: {'200': {description: Summary list}}
+      responses: {'200': {description: Summary list, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/PlanSummary'}}}}}}
     post:
       summary: Creates a draft plan
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreatePlan'}}}}
-      responses: {'201': {description: Created draft}, '400': {$ref: '#/components/responses/Problem'}}
+      responses: {'201': {description: Created draft, content: {application/json: {schema: {$ref: '#/components/schemas/Plan'}}}}, '400': {$ref: '#/components/responses/Problem'}}
   /api/v1/me/plans/{planId}:
     parameters: [{name: planId, in: path, required: true, schema: {type: string, format: uuid}}]
     get:
       summary: Gets the aggregate and current eligibility warnings
-      responses: {'200': {description: Plan}, '404': {$ref: '#/components/responses/Problem'}}
+      responses: {'200': {description: Plan, content: {application/json: {schema: {$ref: '#/components/schemas/Plan'}}}}, '404': {$ref: '#/components/responses/Problem'}}
     put:
       summary: Transactionally replaces a draft and revalidates the catalog
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdatePlan'}}}}
-      responses: {'200': {description: Saved draft}, '409': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
+      responses: {'200': {description: Saved draft, content: {application/json: {schema: {$ref: '#/components/schemas/Plan'}}}}, '409': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
   /api/v1/me/plans/{planId}/activate:
     post:
       summary: Revalidates and activates a complete plan
       parameters: [{name: planId, in: path, required: true, schema: {type: string, format: uuid}}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Transition'}}}}
-      responses: {'200': {description: Active plan}, '409': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
+      responses: {'200': {description: Active plan, content: {application/json: {schema: {$ref: '#/components/schemas/Plan'}}}}, '409': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
   /api/v1/me/plans/{planId}/archive:
     post:
       summary: Archives a plan
       parameters: [{name: planId, in: path, required: true, schema: {type: string, format: uuid}}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Transition'}}}}
-      responses: {'200': {description: Archived plan}, '409': {$ref: '#/components/responses/Problem'}}
+      responses: {'200': {description: Archived plan, content: {application/json: {schema: {$ref: '#/components/schemas/Plan'}}}}, '409': {$ref: '#/components/responses/Problem'}}
+  /api/v1/me/plans/{planId}/apply-suggestion:
+    post:
+      summary: Fetches, revalidates and idempotently applies an owned suggestion to a draft
+      parameters:
+        - {name: planId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 100}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ApplySuggestion'}}}}
+      responses: {'200': {description: Updated draft, content: {application/json: {schema: {$ref: '#/components/schemas/Plan'}}}}, '400': {$ref: '#/components/responses/Problem'}, '409': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
 components:
   securitySchemes:
     bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
@@ -97,6 +105,46 @@ components:
       type: object
       required: [version]
       properties: {version: {type: integer, format: int64, minimum: 0}}
+    ApplySuggestion:
+      type: object
+      required: [suggestionId, expectedPlanVersion]
+      properties:
+        suggestionId: {type: string, format: uuid}
+        expectedPlanVersion: {type: integer, format: int64, minimum: 0}
+    PlanSummary:
+      type: object
+      required: [id, unitId, name, status, version, dayCount, inventoryRevalidationRequired, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        unitId: {type: string, format: uuid}
+        name: {type: string}
+        status: {type: string, enum: [DRAFT, ACTIVE, ARCHIVED]}
+        version: {type: integer, format: int64, minimum: 0}
+        dayCount: {type: integer, minimum: 0, maximum: 7}
+        inventoryRevalidationRequired: {type: boolean}
+        updatedAt: {type: string, format: date-time}
+    Plan:
+      type: object
+      required: [id, unitId, name, status, version, days, inventoryRevalidationRequired, eligibilityCheckAvailable, issues, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        unitId: {type: string, format: uuid}
+        name: {type: string}
+        status: {type: string, enum: [DRAFT, ACTIVE, ARCHIVED]}
+        version: {type: integer, format: int64, minimum: 0}
+        days: {type: array, maxItems: 7, items: {$ref: '#/components/schemas/WorkoutDay'}}
+        inventoryRevalidationRequired: {type: boolean, description: Set asynchronously after inventory changes and cleared only after successful authoritative revalidation.}
+        eligibilityCheckAvailable: {type: boolean}
+        issues: {type: array, items: {$ref: '#/components/schemas/PlanIssue'}}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    PlanIssue:
+      type: object
+      required: [code, message, exerciseIds]
+      properties:
+        code: {type: string, enum: [EXERCISE_INELIGIBLE, ELIGIBILITY_UNAVAILABLE, INVENTORY_CHANGED]}
+        message: {type: string}
+        exerciseIds: {type: array, items: {type: string, format: uuid}}
     Problem:
       type: object
       properties: {type: {type: string, format: uri}, title: {type: string}, status: {type: integer}, detail: {type: string}, instance: {type: string, format: uri}}

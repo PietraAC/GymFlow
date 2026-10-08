@@ -25,11 +25,13 @@ if errorlevel 1 goto :docker_error
 echo [3/8] Encerrando processos antigos do GymFlow...
 call "%~dp0stop-gymflow.bat" --keep-docker --quiet
 
-echo [4/8] Iniciando PostgreSQL e Keycloak...
+echo [4/8] Iniciando PostgreSQL, Keycloak e RabbitMQ...
 docker compose up -d
 if errorlevel 1 goto :compose_error
 call :wait_url "Keycloak" "http://localhost:8080/realms/gymflow/.well-known/openid-configuration" 90
 if errorlevel 1 goto :keycloak_error
+call :wait_url "RabbitMQ" "http://localhost:15672" 60
+if errorlevel 1 goto :rabbitmq_error
 
 echo [5/8] Localizando Java 21 e compilando os servicos...
 call :find_java
@@ -53,6 +55,8 @@ if not exist "frontend\node_modules\.bin\ng.cmd" (
 echo [7/8] Iniciando APIs e frontend...
 del /Q "%RUN_DIR%\*.pid" "%RUN_DIR%\*.log" 2>nul
 set "GYM_SERVICE_URL=http://localhost:8081"
+set "WORKOUT_SERVICE_URL=http://localhost:8082"
+set "ASSISTANT_SERVICE_URL=http://localhost:8083"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $root='%CD%'; $run='%RUN_DIR%'; $services=@(@{Name='gym-service';Jar='services\gym-service\target\gym-service-0.1.0.jar'},@{Name='workout-service';Jar='services\workout-service\target\workout-service-0.1.0.jar'},@{Name='assistant-service';Jar='services\assistant-service\target\assistant-service-0.1.0.jar'}); foreach($service in $services){ $p=Start-Process -FilePath $env:JAVA_EXE -ArgumentList @('-jar',(Join-Path $root $service.Jar)) -WorkingDirectory $root -RedirectStandardOutput (Join-Path $run ($service.Name+'.log')) -RedirectStandardError (Join-Path $run ($service.Name+'.err.log')) -WindowStyle Hidden -PassThru; Set-Content -LiteralPath (Join-Path $run ($service.Name+'.pid')) -Value $p.Id -Encoding ascii }; $p=Start-Process -FilePath (Get-Command npm.cmd).Source -ArgumentList @('start') -WorkingDirectory (Join-Path $root 'frontend') -RedirectStandardOutput (Join-Path $run 'frontend.log') -RedirectStandardError (Join-Path $run 'frontend.err.log') -WindowStyle Hidden -PassThru; Set-Content -LiteralPath (Join-Path $run 'frontend.pid') -Value $p.Id -Encoding ascii"
 if errorlevel 1 goto :process_error
 
@@ -70,9 +74,10 @@ echo.
 echo GymFlow esta pronto:
 echo   Frontend:          http://localhost:4200
 echo   Keycloak:          http://localhost:8080
+echo   RabbitMQ:          http://localhost:15672
 echo   Gym API:           http://localhost:8081
 echo   Workout API:       http://localhost:8082
-echo   Assistant health:  http://localhost:8083/actuator/health
+echo   Assistant API:     http://localhost:8083/swagger-ui.html
 echo   Logs:              %RUN_DIR%
 echo.
 if "%NO_OPEN%"=="0" start "" "http://localhost:4200"
@@ -132,6 +137,9 @@ echo ERRO: nao foi possivel iniciar o Docker Compose.
 goto :failed
 :keycloak_error
 echo ERRO: Keycloak nao ficou pronto. Execute docker compose logs keycloak.
+goto :failed
+:rabbitmq_error
+echo ERRO: RabbitMQ nao ficou pronto. Execute docker compose logs rabbitmq.
 goto :failed
 :java_error
 echo ERRO: JDK 21 nao foi encontrado.

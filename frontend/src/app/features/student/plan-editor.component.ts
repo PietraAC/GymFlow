@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { switchMap } from 'rxjs';
+import { map, switchMap, tap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { Exercise, ExerciseKind, WorkoutDay, WorkoutPlan } from '../../core/api.models';
 import { errorMessage } from '../../core/error-message';
@@ -13,12 +13,12 @@ import { errorMessage } from '../../core/error-message';
     @if(loading()){<div class="card" style="margin-top:1rem">Carregando treino…</div>}
     @else if(plan();as current){
       <form [formGroup]="form" (ngSubmit)="save()" class="stack" style="margin-top:1rem">
-        <header class="page-heading"><div><div class="eyebrow">Editor semanal</div><h1>{{current.name}}</h1><p><span class="badge" [class.active]="current.status==='ACTIVE'" [class.archived]="current.status==='ARCHIVED'">{{status(current.status)}}</span> · versão {{current.version}}</p></div><div class="toolbar">@if(current.status==='DRAFT'){<button type="button" class="button secondary" (click)="addDay()" [disabled]="days.length>=7">Adicionar dia</button><button class="button" [disabled]="saving()||form.invalid">Salvar rascunho</button><button type="button" class="button" (click)="activate()" [disabled]="saving()||form.invalid">Ativar</button>}@if(current.status!=='ARCHIVED'){<button type="button" class="button danger" (click)="archive()" [disabled]="saving()">Arquivar</button>}</div></header>
+        <header class="page-heading"><div><div class="eyebrow">Editor semanal</div><h1>{{current.name}}</h1><p><span class="badge" [class.active]="current.status==='ACTIVE'" [class.archived]="current.status==='ARCHIVED'">{{status(current.status)}}</span> · versão {{current.version}}</p></div><div class="toolbar">@if(current.status==='DRAFT'){<button type="button" class="button secondary" (click)="addDay()" [disabled]="days.length>=7">Adicionar dia</button><button class="button" [disabled]="saving()||form.invalid">Salvar rascunho</button><button type="button" class="button" (click)="activate()" [disabled]="saving()||form.invalid">Ativar</button>}@if(current.status==='ACTIVE'&&current.inventoryRevalidationRequired){<button type="button" class="button" (click)="revalidate()" [disabled]="saving()">Revalidar inventário</button>}@if(current.status!=='ARCHIVED'){<button type="button" class="button danger" (click)="archive()" [disabled]="saving()">Arquivar</button>}</div></header>
         @if(message()){<div class="feedback" [class.error]="failed()" role="status">{{message()}}</div>}
         @if(!current.eligibilityCheckAvailable){<div class="feedback error">Não foi possível conferir a elegibilidade agora. Você pode consultar o rascunho, mas não salvá-lo ou ativá-lo até o gym-service voltar.</div>}
-        @for(issue of current.issues;track issue.code){<div class="feedback error">{{issue.message}}</div>}
+        @for(issue of current.issues;track issue.code){<div class="feedback" [class.error]="issue.code!=='INVENTORY_CHANGED'">{{issue.message}}</div>}
         <section class="card field-grid"><label>Nome do plano<input formControlName="name" maxlength="120"></label><label>Unidade<input formControlName="unitId" readonly></label><label>Filtrar catálogo elegível<select [value]="kindFilter()" (change)="kindFilter.set($any($event.target).value)"><option value="">Todas as modalidades</option><option value="STRENGTH">Força</option><option value="WARMUP">Aquecimento</option><option value="STRETCHING">Alongamento</option></select></label></section>
-        <div formArrayName="days" class="stack">
+        <div class="workbench"><div formArrayName="days" class="stack">
           @for(day of days.controls;track day;let dayIndex=$index){
             <section class="card day" [formGroupName]="dayIndex">
               <div class="item-head"><div style="flex:1"><label>Dia {{dayIndex+1}}<input formControlName="name" maxlength="80"></label></div><div class="toolbar"><button type="button" class="icon-button" (click)="moveDay(dayIndex,-1)" [disabled]="dayIndex===0" aria-label="Mover dia para cima">↑</button><button type="button" class="icon-button" (click)="moveDay(dayIndex,1)" [disabled]="dayIndex===days.length-1" aria-label="Mover dia para baixo">↓</button><button type="button" class="button danger compact" (click)="removeDay(dayIndex)">Remover</button></div></div>
@@ -42,6 +42,14 @@ import { errorMessage } from '../../core/error-message';
             </section>
           }@empty{<div class="empty">Adicione um dia para começar a montar a semana.</div>}
         </div>
+        <aside class="card assistant-panel" aria-labelledby="assistant-title">
+          <div><div class="eyebrow">Sugestão estruturada</div><h2 id="assistant-title">Assistente de treino</h2></div>
+          <p class="muted">Salva o rascunho, usa o perfil e o catálogo elegível da unidade e adiciona uma sugestão validada diretamente ao treino.</p>
+          <div class="empty">A IA recebe somente os dados já cadastrados. IDs, modalidade e disponibilidade são validados novamente antes da inclusão.</div>
+          @if(aiResult();as result){<div class="feedback" role="status"><strong>{{result.source==='DEMO'?'Modo demo':'Gemini'}}</strong> · {{result.changes}} alteração(ões) adicionada(s).</div>}
+          <button type="button" class="button" (click)="addAiSuggestion()" [disabled]="assistantLoading()||form.invalid||current.status!=='DRAFT'||days.length===0">{{assistantLoading()?'Gerando e validando…':'Adicionar sugestão da IA'}}</button>
+          <small class="muted">O clique é a confirmação para gerar e aplicar. Nenhuma carga em kg é definida pela IA.</small>
+        </aside></div>
       </form>
     }
   `
@@ -49,6 +57,7 @@ import { errorMessage } from '../../core/error-message';
 export class PlanEditorComponent {
   private readonly api=inject(ApiService); private readonly route=inject(ActivatedRoute); private readonly router=inject(Router); private readonly fb=inject(FormBuilder);
   readonly loading=signal(true); readonly saving=signal(false); readonly plan=signal<WorkoutPlan|null>(null); readonly exercises=signal<Exercise[]>([]); readonly message=signal(''); readonly failed=signal(false);
+  readonly assistantLoading=signal(false); readonly aiResult=signal<{source:'DEMO'|'GEMINI';changes:number}|null>(null);
   readonly kindFilter=signal<ExerciseKind|''>(''); readonly filteredExercises=computed(()=>this.kindFilter()?this.exercises().filter(exercise=>exercise.kind===this.kindFilter()):this.exercises());
   readonly form=this.fb.group({name:['',[Validators.required,Validators.maxLength(120)]],unitId:['',Validators.required],days:this.fb.array<FormGroup>([])});
   get days():FormArray<FormGroup>{return this.form.controls.days;}
@@ -65,7 +74,36 @@ export class PlanEditorComponent {
   exerciseChanged(group:FormGroup):void{if(this.kind(group)==='STRENGTH'){group.patchValue({sets:3,repetitionMin:8,repetitionMax:12,durationSeconds:null});}else{group.patchValue({sets:null,repetitionMin:null,repetitionMax:null,durationSeconds:60,optionalLoadKg:null});}}
   save():void{const payload=this.payload();if(!payload)return;this.saving.set(true);this.api.savePlan(payload).subscribe({next:p=>{this.load(p);this.saving.set(false);this.show('Rascunho salvo e elegibilidade confirmada.',false);},error:e=>{this.saving.set(false);this.show(errorMessage(e),true);}});}
   activate():void{const payload=this.payload();if(!payload)return;this.saving.set(true);this.api.savePlan(payload).pipe(switchMap(saved=>this.api.activatePlan(saved))).subscribe({next:p=>{this.load(p);this.saving.set(false);this.show('Plano salvo, revalidado e ativado.',false);},error:e=>{this.saving.set(false);this.show(errorMessage(e),true);}});}
+  revalidate():void{const current=this.plan();if(!current||current.status!=='ACTIVE')return;this.saving.set(true);this.api.activatePlan(current).subscribe({next:p=>{this.load(p);this.saving.set(false);this.show('Inventário revalidado para o plano ativo.',false);},error:e=>{this.saving.set(false);this.show(errorMessage(e),true);}});}
   archive():void{const current=this.plan();if(!current)return;this.saving.set(true);this.api.archivePlan(current).subscribe({next:p=>{this.load(p);this.saving.set(false);this.show('Plano arquivado.',false);},error:e=>{this.saving.set(false);this.show(errorMessage(e),true);}});}
+  addAiSuggestion():void{
+    const payload=this.payload();
+    if(!payload||this.form.invalid||this.assistantLoading())return;
+    this.assistantLoading.set(true);
+    this.saving.set(true);
+    this.aiResult.set(null);
+    this.api.savePlan(payload).pipe(
+      tap(saved=>this.load(saved)),
+      switchMap(saved=>this.api.generatePlanSuggestion(saved.id).pipe(
+        switchMap(suggestion=>this.api.applySuggestion(saved,suggestion.id,crypto.randomUUID()).pipe(
+          map(plan=>({plan,source:suggestion.source,changes:suggestion.changes.length}))
+        ))
+      ))
+    ).subscribe({
+      next:result=>{
+        this.load(result.plan);
+        this.aiResult.set({source:result.source,changes:result.changes});
+        this.assistantLoading.set(false);
+        this.saving.set(false);
+        this.show('Sugestão da IA adicionada após validação completa.',false);
+      },
+      error:e=>{
+        this.assistantLoading.set(false);
+        this.saving.set(false);
+        this.show(errorMessage(e),true);
+      }
+    });
+  }
   status(value:string):string{return {DRAFT:'Rascunho',ACTIVE:'Ativo',ARCHIVED:'Arquivado'}[value]??value;}
   private load(plan:WorkoutPlan):void{this.plan.set(plan);this.form.patchValue({name:plan.name,unitId:plan.unitId});this.days.clear();plan.days.forEach(day=>this.days.push(this.dayGroup(day)));this.loading.set(false);this.api.eligibleExercises(plan.unitId).subscribe({next:p=>this.exercises.set(p.content),error:e=>this.show(errorMessage(e),true)});}
   private dayGroup(day:Partial<WorkoutDay>):FormGroup{return this.fb.group({id:[day.id??null],position:[day.position??1,[Validators.required,Validators.min(1),Validators.max(7)]],name:[day.name??'',Validators.required],items:this.fb.array((day.items??[]).map(item=>this.itemGroup(item)))});}

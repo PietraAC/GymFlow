@@ -20,11 +20,36 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${JWT_ISSUER:http://localhost:8080/realms/gymflow}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:gymflow}
+    password: ${RABBITMQ_PASSWORD:gymflow-local}
+    virtual-host: ${RABBITMQ_VHOST:gymflow}
+    listener.simple:
+      default-requeue-rejected: false
+      retry:
+        enabled: true
+        max-attempts: 3
+        initial-interval: 500ms
+        multiplier: 2
+        max-interval: 5s
 app.security.audience: ${JWT_AUDIENCE:workout-service}
 app.clients.gym-service:
   base-url: ${GYM_SERVICE_URL:http://localhost:8081}
   connect-timeout: ${GYM_SERVICE_CONNECT_TIMEOUT:2s}
   read-timeout: ${GYM_SERVICE_READ_TIMEOUT:3s}
+app.clients.assistant-service:
+  base-url: ${ASSISTANT_SERVICE_URL:http://localhost:8083}
+  connect-timeout: ${ASSISTANT_SERVICE_CONNECT_TIMEOUT:2s}
+  read-timeout: ${ASSISTANT_SERVICE_READ_TIMEOUT:4s}
+app.messaging.inventory:
+  exchange: ${INVENTORY_EXCHANGE:gymflow.inventory}
+  routing-key: ${INVENTORY_ROUTING_KEY:equipment.availability.changed.v1}
+  queue: ${INVENTORY_QUEUE:gymflow.workout.inventory.v1}
+  dead-letter-exchange: ${INVENTORY_DLX:gymflow.inventory.dlx}
+  dead-letter-routing-key: ${INVENTORY_DLQ_ROUTING_KEY:gymflow.workout.inventory.v1.failed}
+  dead-letter-queue: ${INVENTORY_DLQ:gymflow.workout.inventory.v1.dlq}
 server.port: ${SERVER_PORT:8082}
 server.error.include-stacktrace: never
 management:

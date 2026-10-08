@@ -53,4 +53,9 @@ input:focus,select:focus,textarea:focus { outline:3px solid rgba(183,243,151,.55
 .day { border-left:4px solid var(--lime-dark); }.item { background:#f7f6f0; border-radius:12px; padding:1rem; }
 .item-head { display:flex; justify-content:space-between; gap:1rem; align-items:center; margin-bottom:1rem; }
 .icon-button { border:1px solid var(--line); background:white; border-radius:8px; padding:.4rem .65rem; cursor:pointer; }
+.workbench { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(300px,.75fr); gap:1rem; align-items:start; }
+.assistant-panel { position:sticky; top:92px; display:grid; gap:1rem; }
+.assistant-panel h2,.assistant-panel h3 { margin:0; }
+.assistant-panel>.button { width:100%; }
+@media (max-width:950px) { .workbench{grid-template-columns:1fr}.assistant-panel{position:static} }
 @media (max-width:800px) { .topbar { flex-wrap:wrap; padding:1rem 4vw; gap:.8rem; }.topbar nav { order:3; width:100%; overflow:auto; }.account-name{display:none}.feature-grid,.grid,.field-grid{grid-template-columns:1fr}.page-heading,.auth-error{align-items:flex-start;flex-direction:column}main{padding-top:2rem} }

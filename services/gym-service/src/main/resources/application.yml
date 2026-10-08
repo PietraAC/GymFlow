@@ -22,9 +22,24 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${JWT_ISSUER:http://localhost:8080/realms/gymflow}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:gymflow}
+    password: ${RABBITMQ_PASSWORD:gymflow-local}
+    virtual-host: ${RABBITMQ_VHOST:gymflow}
+    publisher-confirm-type: correlated
+    publisher-returns: true
 app:
   security:
     audience: ${JWT_AUDIENCE:gym-service}
+  messaging:
+    inventory:
+      exchange: ${INVENTORY_EXCHANGE:gymflow.inventory}
+      routing-key: ${INVENTORY_ROUTING_KEY:equipment.availability.changed.v1}
+      publish-delay: ${OUTBOX_PUBLISH_DELAY:2s}
+      confirm-timeout: ${OUTBOX_CONFIRM_TIMEOUT:5s}
+      batch-size: ${OUTBOX_BATCH_SIZE:20}
 server:
   port: ${SERVER_PORT:8081}
   error:

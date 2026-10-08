@@ -1,0 +1,107 @@
+openapi: 3.1.0
+info:
+  title: GymFlow Assistant API
+  version: v1
+  description: Schema-constrained educational workout suggestions bound to the authenticated student's plans.
+servers:
+  - url: http://localhost:8083
+security: [{ bearerAuth: [] }]
+paths:
+  /api/v1/plans/{planId}/suggestions:
+    post:
+      summary: Generates and persists a structured suggestion from the saved plan context
+      description: Accepts no free-text prompt. The server builds the intent and context, validates provider output, and returns JSON that workout-service must still revalidate before applying.
+      parameters: [{name: planId, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'201': {description: Structured suggestion, content: {application/json: {schema: {$ref: '#/components/schemas/Suggestion'}}}}, '400': {$ref: '#/components/responses/Problem'}, '404': {$ref: '#/components/responses/Problem'}, '429': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
+  /api/v1/conversations:
+    post:
+      summary: Creates a conversation for an owned workout plan
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateConversation'}}}}
+      responses: {'201': {description: Conversation, content: {application/json: {schema: {$ref: '#/components/schemas/Conversation'}}}}, '404': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
+  /api/v1/conversations/{conversationId}/messages:
+    parameters: [{name: conversationId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      summary: Lists the owned conversation history
+      responses: {'200': {description: Messages, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Message'}}}}}, '404': {$ref: '#/components/responses/Problem'}}
+    post:
+      summary: Builds a fresh context and returns a response with an optional reviewable suggestion
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SendMessage'}}}}
+      responses: {'200': {description: Assistant turn, content: {application/json: {schema: {$ref: '#/components/schemas/AssistantTurn'}}}}, '400': {$ref: '#/components/responses/Problem'}, '429': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
+  /api/v1/suggestions/{suggestionId}:
+    get:
+      summary: Gets an owned suggestion snapshot for authoritative application by workout-service
+      parameters: [{name: suggestionId, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'200': {description: Suggestion, content: {application/json: {schema: {$ref: '#/components/schemas/Suggestion'}}}}, '404': {$ref: '#/components/responses/Problem'}}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+  responses:
+    Problem: {description: ProblemDetail, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+  schemas:
+    CreateConversation:
+      type: object
+      required: [planId]
+      properties: {planId: {type: string, format: uuid}}
+    SendMessage:
+      type: object
+      required: [text]
+      properties: {text: {type: string, minLength: 1, maxLength: 2000}}
+    Conversation:
+      type: object
+      required: [id, planId, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        planId: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    Message:
+      type: object
+      required: [id, role, text, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        role: {type: string, enum: [USER, ASSISTANT]}
+        text: {type: string, maxLength: 2000}
+        createdAt: {type: string, format: date-time}
+    AssistantTurn:
+      type: object
+      required: [message, needsProfessionalGuidance, observations]
+      properties:
+        message: {$ref: '#/components/schemas/Message'}
+        needsProfessionalGuidance: {type: boolean}
+        observations: {type: array, maxItems: 20, items: {type: string, maxLength: 500}}
+        suggestion:
+          anyOf:
+            - {$ref: '#/components/schemas/Suggestion'}
+            - {type: 'null'}
+    Suggestion:
+      type: object
+      required: [id, planId, basePlanVersion, contextFingerprint, status, source, explanation, observations, changes, createdAt, expiresAt]
+      properties:
+        id: {type: string, format: uuid}
+        planId: {type: string, format: uuid}
+        basePlanVersion: {type: integer, format: int64, minimum: 0}
+        contextFingerprint: {type: string, minLength: 64, maxLength: 64}
+        status: {type: string, enum: [AVAILABLE, EXPIRED]}
+        source: {type: string, enum: [DEMO, GEMINI]}
+        explanation: {type: string, maxLength: 2000}
+        observations: {type: array, maxItems: 20, items: {type: string, maxLength: 500}}
+        changes: {type: array, maxItems: 20, items: {$ref: '#/components/schemas/SuggestionChange'}}
+        createdAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+    SuggestionChange:
+      type: object
+      required: [operation, dayId, targetItemId, exerciseId, position, sets, repetitionMin, repetitionMax, durationSeconds, restSeconds, reason]
+      properties:
+        operation: {type: string, enum: [ADD, REPLACE, REMOVE]}
+        dayId: {type: string, format: uuid}
+        targetItemId: {type: [string, 'null'], format: uuid}
+        exerciseId: {type: [string, 'null'], format: uuid}
+        position: {type: [integer, 'null'], minimum: 1}
+        sets: {type: [integer, 'null'], minimum: 1, maximum: 10}
+        repetitionMin: {type: [integer, 'null'], minimum: 1, maximum: 100}
+        repetitionMax: {type: [integer, 'null'], minimum: 1, maximum: 100}
+        durationSeconds: {type: [integer, 'null'], minimum: 5, maximum: 1800}
+        restSeconds: {type: [integer, 'null'], minimum: 0, maximum: 600}
+        reason: {type: string, maxLength: 500}
+    Problem:
+      type: object
+      properties: {type: {type: string, format: uri}, title: {type: string}, status: {type: integer}, detail: {type: string}, instance: {type: string, format: uri}}

@@ -5,11 +5,12 @@
 ![Angular 22](https://img.shields.io/badge/Angular-22.2-DD0031?logo=angular&logoColor=white)
 ![PostgreSQL 18](https://img.shields.io/badge/PostgreSQL-18.6-4169E1?logo=postgresql&logoColor=white)
 ![Keycloak 26](https://img.shields.io/badge/Keycloak-26.7-4D4D4D?logo=keycloak&logoColor=white)
-![Status](https://img.shields.io/badge/status-stage%202%20complete-315C3E)
+![RabbitMQ 4.3](https://img.shields.io/badge/RabbitMQ-4.3.6-FF6600?logo=rabbitmq&logoColor=white)
+![Status](https://img.shields.io/badge/status-stage%204%20complete-315C3E)
 
 GymFlow is a portfolio project that explores how to build a secure, evolvable fitness platform with Java, Spring Boot, Angular, PostgreSQL, and Keycloak.
 
-Gyms manage branches and equipment availability. Students build weekly workout plans using only exercises that are eligible at their selected branch. A future AI assistant will suggest contextual additions, but every suggestion must be reviewed and explicitly accepted before it changes a workout.
+Gyms manage branches and equipment availability. Students build weekly workout plans using only exercises that are eligible at their selected branch. With one explicit button, the contextual assistant returns schema-constrained JSON that is revalidated and idempotently added to the saved draft.
 
 > This project is educational software, not medical guidance. Its exercise catalog contains neutral training descriptions and does not diagnose conditions or prescribe treatment.
 
@@ -17,7 +18,7 @@ Gyms manage branches and equipment availability. Students build weekly workout p
 
 ## Current status
 
-Stages 1 and 2 are complete. The repository currently includes real authentication, authorization, persistence, migrations, inventory-aware exercise eligibility, manual workout planning, and a responsive web client.
+Stages 1 through 4 are complete. The repository includes authentication, authorization, persistence, inventory-aware eligibility, manual workout planning, structured assistant suggestions, RabbitMQ inventory events, and a responsive web client.
 
 | Capability | Status |
 | --- | --- |
@@ -26,8 +27,8 @@ Stages 1 and 2 are complete. The repository currently includes real authenticati
 | Student profile and manual weekly workout plans | Implemented |
 | OAuth 2.0 / OIDC login with Authorization Code + PKCE | Implemented |
 | Role and ownership-based authorization | Implemented |
-| AI-assisted workout suggestions with human review | Planned — Stage 3 |
-| RabbitMQ equipment availability event | Planned — Stage 4 |
+| AI-assisted structured workout additions with explicit confirmation | Implemented |
+| RabbitMQ equipment availability event | Implemented |
 | Cloud deployment, gateway, service discovery, and Kubernetes | Not in the current scope |
 
 ## Architecture
@@ -40,13 +41,17 @@ flowchart LR
     WORKOUT[workout-service<br/>:8082]
     ASSISTANT[assistant-service<br/>:8083]
     PG[(PostgreSQL<br/>separate databases/users)]
-    MQ[(RabbitMQ<br/>planned)]
-    GEMINI[Gemini adapter<br/>planned and optional]
+    MQ[(RabbitMQ<br/>:5672)]
+    GEMINI[Gemini adapter<br/>optional]
 
     UI -->|Authorization Code + PKCE| KC
     UI -->|JWT| GYM
     UI -->|JWT| WORKOUT
+    UI -->|JWT| ASSISTANT
     WORKOUT -->|synchronous eligibility check| GYM
+    WORKOUT -->|fetch owned suggestion| ASSISTANT
+    ASSISTANT -->|owned plan and profile context| WORKOUT
+    ASSISTANT -->|eligible catalog context| GYM
     GYM -->|gym_db| PG
     WORKOUT -->|workout_db| PG
     ASSISTANT -->|assistant_db| PG
@@ -61,10 +66,10 @@ Each service owns its data and Flyway migrations. Services never access another 
 
 | Service | Responsibility | Current scope |
 | --- | --- | --- |
-| `gym-service` | Gyms, admin memberships, branches, equipment inventory, exercise catalog, and eligibility | Full Stage 1/2 API |
-| `workout-service` | Student profiles and the `WorkoutPlan → WorkoutDay → WorkoutItem` aggregate | Full Stage 2 API |
-| `assistant-service` | Future AI orchestration boundary | Secure skeleton and health check only |
-| `frontend` | Role-aware administration and student workflows | Angular standalone application |
+| `gym-service` | Gyms, admin memberships, branches, equipment inventory, exercise catalog, eligibility, and transactional event outbox | Full Stage 1–4 API |
+| `workout-service` | Student profiles, workout aggregate, idempotent suggestion application, and inventory-event consumer | Full Stage 2–4 API |
+| `assistant-service` | Conversations, context snapshots, validated suggestions, demo and Gemini providers | Full Stage 3 API |
+| `frontend` | Role-aware administration, student workflows, and direct structured suggestion action | Angular standalone application |
 
 ## Key technical decisions
 
@@ -79,7 +84,11 @@ Each service owns its data and Flyway migrations. Services never access another 
 - Eligibility mutations fail closed on timeout or dependency failure; reads remain available with warnings.
 - Optimistic locking prevents silent overwrites, returning `409 Conflict` for stale versions.
 - APIs use RFC 9457-style `ProblemDetail` responses and correlation IDs.
-- AI integration will be behind a provider interface, with a deterministic offline demo adapter and no real API calls in tests.
+- AI integration is behind `TrainingAssistantProvider`, with a deterministic offline demo adapter and no real provider calls in tests.
+- Suggestions expire after 30 minutes, carry plan/context fingerprints, and are applied idempotently only by `workout-service`.
+- Provider calls have explicit connection/read timeouts, bounded output, per-user rate limiting, global concurrency control, and no automatic generation retry.
+- Inventory changes and outbox records commit together; publication uses persistent messages and broker confirms.
+- The workout consumer is idempotent, ignores older aggregate versions, retries finitely, and dead-letters messages it cannot process.
 
 ## Domain rules demonstrated
 
@@ -112,7 +121,7 @@ Then double-click [`start-gymflow.bat`](start-gymflow.bat), or run:
 .\start-gymflow.bat
 ```
 
-The script starts Docker Desktop when needed, launches PostgreSQL and Keycloak, builds all services, restores frontend dependencies when necessary, waits for every health check, and opens `http://localhost:4200`.
+The script starts Docker Desktop when needed, launches PostgreSQL, Keycloak, and RabbitMQ, builds all services, restores frontend dependencies when necessary, waits for every health check, and opens `http://localhost:4200`.
 
 Stop the complete local environment without deleting PostgreSQL data:
 
@@ -139,11 +148,13 @@ The demo catalog contains two gyms, three branches, ten equipment types, and 22 
 | --- | --- |
 | Angular application | `http://localhost:4200` |
 | Keycloak | `http://localhost:8080` |
+| RabbitMQ management | `http://localhost:15672` |
 | Gym API / Swagger UI | `http://localhost:8081/swagger-ui.html` |
 | Workout API / Swagger UI | `http://localhost:8082/swagger-ui.html` |
 | Assistant health check | `http://localhost:8083/actuator/health` |
+| Assistant API / Swagger UI | `http://localhost:8083/swagger-ui.html` |
 
-Versioned contracts: [Gym API](docs/openapi/gym-service.yaml) and [Workout API](docs/openapi/workout-service.yaml).
+Versioned contracts: [Gym API](docs/openapi/gym-service.yaml), [Workout API](docs/openapi/workout-service.yaml), [Assistant API](docs/openapi/assistant-service.yaml), and [`EquipmentAvailabilityChanged.v1`](docs/events/equipment-availability-changed-v1.schema.json). RabbitMQ recovery is documented in the [operations runbook](docs/rabbitmq-operations.md).
 
 ## Running manually
 
@@ -169,8 +180,11 @@ $env:GYM_SERVICE_URL = 'http://localhost:8081'
 
 ```powershell
 $env:ASSISTANT_DB_PASSWORD = '<your-local-password>'
+$env:AI_PROVIDER = 'demo'
 .\mvnw -pl services/assistant-service spring-boot:run
 ```
+
+The default `demo` provider is deterministic and offline. To opt into Gemini, set `AI_PROVIDER=gemini`, `AI_MODEL`, and `GEMINI_API_KEY` only in the untracked local `.env`. Missing Gemini configuration never falls back silently to demo, and manual editing remains available.
 
 ```powershell
 Set-Location frontend
@@ -188,16 +202,17 @@ npm test
 npm run build
 ```
 
-The Stage 2 verification includes:
+The Stage 3 and 4 verification includes:
 
-- 12 passing `gym-service` tests.
-- 11 passing `workout-service` tests.
-- PostgreSQL migrations and persistence exercised through Testcontainers.
-- 4 passing Angular/Vitest tests and a production build.
-- A real local Keycloak flow covering profile creation and plan create/edit/activate/archive.
+- 13 passing `gym-service` tests, including outbox publication against RabbitMQ 4.3.6.
+- 14 passing `workout-service` tests, including suggestion application, aggregate-version persistence, and idempotent inventory-event processing.
+- 14 passing `assistant-service` tests, including direct structured generation, PostgreSQL migration/ownership, and local mock-HTTP provider failures.
+- PostgreSQL and RabbitMQ integration exercised through Testcontainers.
+- Angular/Vitest coverage for manual editing, save → structured generation → application ordering, and active-plan inventory revalidation, plus a production build.
+- A real local Keycloak flow covering suggestion generation, confirmed application, optimistic version advance, idempotent replay, and archival.
 - Cross-student access returning `404` to avoid leaking resource existence.
 
-See the complete [verification record](docs/verification.md) and [pinned dependency versions](docs/versions.md).
+See the [Stage 2 verification record](docs/verification.md), [Stage 3 verification record](docs/verification-stage3.md), [Stage 4 verification record](docs/verification-stage4.md), and [pinned dependency versions](docs/versions.md).
 
 ## Project structure
 
@@ -229,20 +244,23 @@ Service boundaries, isolated databases, Flyway, Keycloak, gym administration, ca
 
 Angular client, student profiles, manual weekly plans, ownership isolation, optimistic locking, and live eligibility revalidation.
 
-### Stage 3 — Reviewable AI assistant
+### Stage 3 — Structured AI assistant ✅
 
 - Conversation and suggestion lifecycle with expiration and fingerprints.
 - `TrainingAssistantProvider` abstraction.
 - Deterministic offline demo provider.
 - Optional Gemini adapter configured only through environment variables.
-- Strict validation of model output and an explicit before/after review screen.
+- Strict validation of model output and an explicit “Adicionar sugestão da IA” action.
+- The action saves the draft, generates structured JSON, and asks `workout-service` to revalidate and apply it; there is no free-text prompt in the editor.
 - No real provider calls in automated tests.
 
-### Stage 4 — Event-driven inventory changes
+### Stage 4 — Event-driven inventory changes ✅
 
 - RabbitMQ for the real `EquipmentAvailabilityChanged.v1` use case.
 - Transactional outbox in `gym-service`.
 - Publisher confirms and idempotent consumption in `workout-service`.
+- Bounded retries, DLQ, aggregate-version ordering, and an operational reprocessing procedure.
+- Potentially affected plans are visibly marked until a successful authoritative revalidation.
 - Synchronous eligibility checks remain authoritative for critical mutations.
 
 ### Stage 5 — Portfolio hardening
