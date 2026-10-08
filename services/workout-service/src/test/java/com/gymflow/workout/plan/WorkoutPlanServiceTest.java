@@ -21,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import com.gymflow.workout.integration.assistant.AssistantSuggestionClient;
 import com.gymflow.workout.suggestion.SuggestionApplicationRepository;
+import com.gymflow.workout.profile.Goal;
 
 class WorkoutPlanServiceTest {
     @Mock WorkoutPlanRepository repository;
@@ -103,6 +104,39 @@ class WorkoutPlanServiceTest {
 
         assertThat(response.days().getFirst().items()).hasSize(2);
         verify(applications).saveAndFlush(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void appliesACompleteWorkoutSuggestionAndPreservesExistingContent() {
+        UUID planId = UUID.randomUUID(), unitId = UUID.randomUUID(), dayId = UUID.randomUUID();
+        UUID currentExercise = UUID.randomUUID(), addedExercise = UUID.randomUUID(), suggestionId = UUID.randomUUID();
+        WorkoutPlan plan = new WorkoutPlan("student-a", unitId, "Plano", Goal.STRENGTH, 3);
+        plan.replace(unitId, "Plano", Goal.STRENGTH, 3, List.of(new WorkoutDay(dayId, 1, "Dia 1",
+            List.of(new WorkoutItem(null, currentExercise, 1, 3, 8, 12, null, 60, null, null)))));
+        var itemAtTwo = new AssistantSuggestionClient.SuggestedItem(addedExercise, 2, 3, 8, 12, null, 60, "Complemento");
+        var itemAtOne = new AssistantSuggestionClient.SuggestedItem(addedExercise, 1, 3, 8, 12, null, 60, "Complemento");
+        var completion = new AssistantSuggestionClient.Completion(
+            List.of(new AssistantSuggestionClient.SuggestedDay(2, "Dia 2", List.of(itemAtOne)),
+                new AssistantSuggestionClient.SuggestedDay(3, "Dia 3", List.of(itemAtOne))),
+            List.of(new AssistantSuggestionClient.ExistingDayAddition(dayId, List.of(itemAtTwo))));
+        when(repository.findOneByIdAndIdentitySubject(planId, "student-a")).thenReturn(Optional.of(plan));
+        when(applications.findByIdentitySubjectAndIdempotencyKey("student-a", "key-complete")).thenReturn(Optional.empty());
+        when(suggestions.get(suggestionId, "token")).thenReturn(new AssistantSuggestionClient.Suggestion(suggestionId,
+            planId, 0, "fp", "AVAILABLE", "DEMO", AssistantSuggestionClient.SuggestionKind.WORKOUT_COMPLETION,
+            "Treino completo", List.of(), List.of(), completion, Instant.now(), Instant.now().plusSeconds(600)));
+        when(catalog.validate(org.mockito.ArgumentMatchers.eq(unitId), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("token")))
+            .thenReturn(new GymCatalogClient.EligibilityResult(unitId, List.of(
+                new GymCatalogClient.EligibilityItem(currentExercise, ExerciseKind.STRENGTH, true, java.util.Set.of()),
+                new GymCatalogClient.EligibilityItem(addedExercise, ExerciseKind.STRENGTH, true, java.util.Set.of()))));
+
+        PlanModels.PlanResponse response = service.applySuggestion("student-a", planId,
+            new PlanModels.ApplySuggestionRequest(suggestionId, 0L), "key-complete", "token");
+
+        assertThat(response.days()).hasSize(3);
+        assertThat(response.days().getFirst().items()).extracting(PlanModels.ItemResponse::exerciseId)
+            .containsExactly(currentExercise, addedExercise);
+        assertThat(response.goal()).isEqualTo(Goal.STRENGTH);
+        assertThat(response.targetDaysPerWeek()).isEqualTo(3);
     }
 
     private PlanModels.UpdatePlanRequest request(UUID unitId, UUID exerciseId) {

@@ -1,5 +1,6 @@
 package com.gymflow.workout.plan;
 
+import com.gymflow.workout.profile.Goal;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
@@ -15,9 +16,17 @@ import java.util.UUID;
 
 public final class PlanModels {
     private PlanModels() {}
-    public record CreatePlanRequest(@NotNull UUID unitId, @NotBlank @Size(max = 120) String name) {}
+    public record CreatePlanRequest(@NotNull UUID unitId, @NotBlank @Size(max = 120) String name,
+        @NotNull Goal goal, @Min(1) @Max(7) int targetDaysPerWeek) {
+        public CreatePlanRequest(UUID unitId, String name) { this(unitId, name, Goal.GENERAL_FITNESS, 3); }
+    }
     public record UpdatePlanRequest(@NotNull @Min(0) Long version, @NotNull UUID unitId,
-        @NotBlank @Size(max = 120) String name, @NotNull @Size(max = 7) List<@Valid DayRequest> days) {}
+        @NotBlank @Size(max = 120) String name, @NotNull Goal goal,
+        @Min(1) @Max(7) int targetDaysPerWeek, @NotNull @Size(max = 7) List<@Valid DayRequest> days) {
+        public UpdatePlanRequest(Long version, UUID unitId, String name, List<DayRequest> days) {
+            this(version, unitId, name, Goal.GENERAL_FITNESS, 3, days);
+        }
+    }
     public record TransitionRequest(@NotNull @Min(0) Long version) {}
     public record ApplySuggestionRequest(@NotNull UUID suggestionId, @NotNull @Min(0) Long expectedPlanVersion) {}
     public record DayRequest(UUID id, @Min(1) @Max(7) int position, @NotBlank @Size(max = 80) String name,
@@ -27,13 +36,29 @@ public final class PlanModels {
         @Min(1) @Max(100) Integer repetitionMax, @Min(5) @Max(1800) Integer durationSeconds,
         @Min(0) @Max(600) Integer restSeconds, @DecimalMin("0.0") BigDecimal optionalLoadKg,
         @Size(max = 500) String notes) {}
-    public record PlanSummary(UUID id, UUID unitId, String name, PlanStatus status, long version, int dayCount,
-                              boolean inventoryRevalidationRequired, Instant updatedAt) {}
+    public record PlanSummary(UUID id, UUID unitId, String name, Goal goal, int targetDaysPerWeek,
+                              PlanStatus status, long version, int dayCount,
+                              boolean inventoryRevalidationRequired, Instant updatedAt) {
+        public PlanSummary(UUID id, UUID unitId, String name, PlanStatus status, long version, int dayCount,
+                           boolean inventoryRevalidationRequired, Instant updatedAt) {
+            this(id, unitId, name, Goal.GENERAL_FITNESS, 3, status, version, dayCount,
+                inventoryRevalidationRequired, updatedAt);
+        }
+    }
     public record PlanIssue(String code, String message, List<UUID> exerciseIds) {}
     public record ItemResponse(UUID id, UUID exerciseId, int position, Integer sets, Integer repetitionMin,
         Integer repetitionMax, Integer durationSeconds, Integer restSeconds, BigDecimal optionalLoadKg, String notes) {}
     public record DayResponse(UUID id, int position, String name, List<ItemResponse> items) {}
-    public record PlanResponse(UUID id, UUID unitId, String name, PlanStatus status, long version,
+    public record PlanResponse(UUID id, UUID unitId, String name, Goal goal, int targetDaysPerWeek,
+        PlanStatus status, long version,
         List<DayResponse> days, boolean inventoryRevalidationRequired, boolean eligibilityCheckAvailable,
-        List<PlanIssue> issues, Instant createdAt, Instant updatedAt) {}
+        List<PlanIssue> issues, Instant createdAt, Instant updatedAt) {
+        public PlanResponse(UUID id, UUID unitId, String name, PlanStatus status, long version,
+                            List<DayResponse> days, boolean inventoryRevalidationRequired,
+                            boolean eligibilityCheckAvailable, List<PlanIssue> issues,
+                            Instant createdAt, Instant updatedAt) {
+            this(id, unitId, name, Goal.GENERAL_FITNESS, 3, status, version, days,
+                inventoryRevalidationRequired, eligibilityCheckAvailable, issues, createdAt, updatedAt);
+        }
+    }
 }

@@ -2,6 +2,7 @@ package com.gymflow.assistant.provider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.gymflow.assistant.conversation.AssistantModels;
 import com.gymflow.assistant.integration.AssistantContext;
 import java.util.List;
 import java.util.Set;
@@ -37,6 +38,18 @@ class DemoTrainingAssistantProviderTest {
             assertThat(change.exerciseId()).isEqualTo(exerciseId);
         });
         assertThat(result.reply()).contains("Nada foi alterado automaticamente");
+    }
+
+    @Test void completesTheRequestedWeekWithoutInventingExercises() {
+        UUID dayId = UUID.randomUUID(), exerciseId = UUID.randomUUID();
+        var result = provider.complete(context(dayId, exerciseId));
+
+        assertThat(result.completion().existingDayAdditions()).singleElement()
+            .satisfies(addition -> assertThat(addition.dayId()).isEqualTo(dayId));
+        assertThat(result.completion().newDays()).extracting(AssistantModels.SuggestedDay::position)
+            .containsExactly(2, 3);
+        assertThat(result.completion().newDays()).flatExtracting(AssistantModels.SuggestedDay::items)
+            .allSatisfy(item -> assertThat(item.exerciseId()).isEqualTo(exerciseId));
     }
 
     private AssistantContext context(UUID dayId, UUID exerciseId) {

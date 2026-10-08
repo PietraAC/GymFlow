@@ -72,6 +72,26 @@ public class AssistantRepository {
             explanation, observations, changes, now, expiresAt);
     }
 
+    public AssistantModels.SuggestionResponse saveCompletionSuggestion(UUID conversationId, String subject, UUID planId,
+                                                                         long planVersion, String fingerprint,
+                                                                         AssistantModels.Source source, String explanation,
+                                                                         List<String> observations,
+                                                                         AssistantModels.CompletionProposal completion,
+                                                                         Instant expiresAt) {
+        UUID id = UUID.randomUUID();
+        Instant now = Instant.now();
+        jdbc.update("""
+            INSERT INTO suggestions(id, conversation_id, identity_subject, plan_id, base_plan_version,
+              context_fingerprint, status, source, suggestion_kind, explanation, observations, proposed_changes,
+              completion_payload, created_at, expires_at)
+            VALUES (?,?,?,?,?,?,'AVAILABLE',?,'WORKOUT_COMPLETION',?,?::jsonb,'[]'::jsonb,?::jsonb,?,?)
+            """, id, conversationId, subject, planId, planVersion, fingerprint, source.name(), explanation,
+            json(observations), json(completion), Timestamp.from(now), Timestamp.from(expiresAt));
+        return new AssistantModels.SuggestionResponse(id, planId, planVersion, fingerprint, "AVAILABLE", source,
+            AssistantModels.SuggestionKind.WORKOUT_COMPLETION, explanation, observations, List.of(), completion,
+            now, expiresAt);
+    }
+
     public AssistantModels.SuggestionResponse ownedSuggestion(String subject, UUID id) {
         return jdbc.query("SELECT * FROM suggestions WHERE id=? AND identity_subject=?", this::suggestion, id, subject)
             .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Sugestão não encontrada"));
@@ -80,11 +100,15 @@ public class AssistantRepository {
     private AssistantModels.SuggestionResponse suggestion(ResultSet rs, int row) throws SQLException {
         Instant expiresAt = rs.getTimestamp("expires_at").toInstant();
         String status = expiresAt.isBefore(Instant.now()) ? "EXPIRED" : rs.getString("status");
+        AssistantModels.SuggestionKind kind = AssistantModels.SuggestionKind.valueOf(rs.getString("suggestion_kind"));
+        AssistantModels.CompletionProposal completion = rs.getString("completion_payload") == null ? null
+            : read(rs.getString("completion_payload"), new TypeReference<>() {});
         return new AssistantModels.SuggestionResponse(rs.getObject("id", UUID.class),
             rs.getObject("plan_id", UUID.class), rs.getLong("base_plan_version"),
-            rs.getString("context_fingerprint"), status, AssistantModels.Source.valueOf(rs.getString("source")),
+            rs.getString("context_fingerprint"), status, AssistantModels.Source.valueOf(rs.getString("source")), kind,
             rs.getString("explanation"), read(rs.getString("observations"), STRING_LIST),
-            read(rs.getString("proposed_changes"), CHANGE_LIST), rs.getTimestamp("created_at").toInstant(), expiresAt);
+            read(rs.getString("proposed_changes"), CHANGE_LIST), completion,
+            rs.getTimestamp("created_at").toInstant(), expiresAt);
     }
 
     private String json(Object value) {

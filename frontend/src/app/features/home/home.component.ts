@@ -15,7 +15,7 @@ import { AuthService } from '../../core/auth.service';
         @if (auth.hasRole('STUDENT')) { <a class="button" routerLink="/student/plans">Abrir meus treinos</a> }
         @if (auth.hasRole('GYM_ADMIN')) { <a class="button" routerLink="/admin">Gerenciar unidades</a> }
       </div>
-      <div class="stage-note"><span>Etapa 4</span> Sugestões estruturadas, inventário orientado a eventos e revalidação autoritativa.</div>
+      <div class="stage-note"><span>Etapa 6</span> A IA completa a semana em um rascunho revisável, com dias expansíveis e exercícios validados.</div>
     </section>
     <section class="feature-grid" aria-label="Recursos atuais">
       <article><strong>01</strong><h2>Inventário conectado</h2><p>A disponibilidade cadastrada pela academia define o catálogo de cada unidade.</p></article>

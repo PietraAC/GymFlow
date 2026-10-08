@@ -9,8 +9,8 @@ security: [{ bearerAuth: [] }]
 paths:
   /api/v1/plans/{planId}/suggestions:
     post:
-      summary: Generates and persists a structured suggestion from the saved plan context
-      description: Accepts no free-text prompt. The server builds the intent and context, validates provider output, and returns JSON that workout-service must still revalidate before applying.
+      summary: Generates and persists a structured workout-completion proposal
+      description: Accepts no free-text prompt. The server uses the plan goal and target frequency to propose missing days and exercises, validates provider output, and returns JSON that workout-service must still revalidate before applying.
       parameters: [{name: planId, in: path, required: true, schema: {type: string, format: uuid}}]
       responses: {'201': {description: Structured suggestion, content: {application/json: {schema: {$ref: '#/components/schemas/Suggestion'}}}}, '400': {$ref: '#/components/responses/Problem'}, '404': {$ref: '#/components/responses/Problem'}, '429': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
   /api/v1/conversations:
@@ -74,7 +74,7 @@ components:
             - {type: 'null'}
     Suggestion:
       type: object
-      required: [id, planId, basePlanVersion, contextFingerprint, status, source, explanation, observations, changes, createdAt, expiresAt]
+      required: [id, planId, basePlanVersion, contextFingerprint, status, source, kind, explanation, observations, changes, completion, createdAt, expiresAt]
       properties:
         id: {type: string, format: uuid}
         planId: {type: string, format: uuid}
@@ -82,9 +82,14 @@ components:
         contextFingerprint: {type: string, minLength: 64, maxLength: 64}
         status: {type: string, enum: [AVAILABLE, EXPIRED]}
         source: {type: string, enum: [DEMO, GEMINI]}
+        kind: {type: string, enum: [ITEM_CHANGES, WORKOUT_COMPLETION]}
         explanation: {type: string, maxLength: 2000}
         observations: {type: array, maxItems: 20, items: {type: string, maxLength: 500}}
         changes: {type: array, maxItems: 20, items: {$ref: '#/components/schemas/SuggestionChange'}}
+        completion:
+          anyOf:
+            - {$ref: '#/components/schemas/CompletionProposal'}
+            - {type: 'null'}
         createdAt: {type: string, format: date-time}
         expiresAt: {type: string, format: date-time}
     SuggestionChange:
@@ -96,6 +101,37 @@ components:
         targetItemId: {type: [string, 'null'], format: uuid}
         exerciseId: {type: [string, 'null'], format: uuid}
         position: {type: [integer, 'null'], minimum: 1}
+        sets: {type: [integer, 'null'], minimum: 1, maximum: 10}
+        repetitionMin: {type: [integer, 'null'], minimum: 1, maximum: 100}
+        repetitionMax: {type: [integer, 'null'], minimum: 1, maximum: 100}
+        durationSeconds: {type: [integer, 'null'], minimum: 5, maximum: 1800}
+        restSeconds: {type: [integer, 'null'], minimum: 0, maximum: 600}
+        reason: {type: string, maxLength: 500}
+    CompletionProposal:
+      type: object
+      required: [newDays, existingDayAdditions]
+      properties:
+        newDays: {type: array, maxItems: 7, items: {$ref: '#/components/schemas/SuggestedDay'}}
+        existingDayAdditions: {type: array, maxItems: 7, items: {$ref: '#/components/schemas/ExistingDayAddition'}}
+    SuggestedDay:
+      type: object
+      required: [position, name, items]
+      properties:
+        position: {type: integer, minimum: 1, maximum: 7}
+        name: {type: string, maxLength: 80}
+        items: {type: array, minItems: 1, maxItems: 12, items: {$ref: '#/components/schemas/SuggestedItem'}}
+    ExistingDayAddition:
+      type: object
+      required: [dayId, items]
+      properties:
+        dayId: {type: string, format: uuid}
+        items: {type: array, maxItems: 12, items: {$ref: '#/components/schemas/SuggestedItem'}}
+    SuggestedItem:
+      type: object
+      required: [exerciseId, position, sets, repetitionMin, repetitionMax, durationSeconds, restSeconds, reason]
+      properties:
+        exerciseId: {type: string, format: uuid}
+        position: {type: integer, minimum: 1}
         sets: {type: [integer, 'null'], minimum: 1, maximum: 10}
         repetitionMin: {type: [integer, 'null'], minimum: 1, maximum: 100}
         repetitionMax: {type: [integer, 'null'], minimum: 1, maximum: 100}

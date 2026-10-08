@@ -13,6 +13,8 @@ node_modules/
 **/node_modules/
 dist/
 **/dist/
+frontend/playwright-report/
+frontend/test-results/
 *.log
 .DS_Store
 GymFlow_Spec_e_Prompt_Codex.md

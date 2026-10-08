@@ -20,3 +20,5 @@ Include the affected component, reproduction conditions, expected impact, and a 
 - The local Keycloak server runs in development mode.
 - AI provider keys must be supplied through environment variables and must never appear in source code, tests, fixtures, screenshots, or logs.
 - Automated tests must use the deterministic demo AI adapter rather than an external provider.
+- Real-provider use must send only the minimum context required for the feature and must not include secrets, access tokens, free-form medical data, or direct database records.
+- Model output is untrusted input: schema validation, ownership/version checks, current catalog eligibility, expiration, and idempotency are enforced before a workout draft can change.

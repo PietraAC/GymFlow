@@ -7,7 +7,7 @@ import { WorkoutPlan } from '../../core/api.models';
 import { PlanEditorComponent } from './plan-editor.component';
 
 describe('PlanEditorComponent', () => {
-  const initial: WorkoutPlan = { id:'plan-1', unitId:'unit-1', name:'Meu plano', status:'DRAFT', version:0,
+  const initial: WorkoutPlan = { id:'plan-1', unitId:'unit-1', name:'Meu plano', goal:'GENERAL_FITNESS', targetDaysPerWeek:3, status:'DRAFT', version:0,
     days:[], inventoryRevalidationRequired:false, eligibilityCheckAvailable:true, issues:[] };
   let api: {
     plan: ReturnType<typeof vi.fn>; eligibleExercises: ReturnType<typeof vi.fn>;
@@ -22,8 +22,9 @@ describe('PlanEditorComponent', () => {
       savePlan: vi.fn((plan: WorkoutPlan) => of({...plan, version:plan.version+1})),
       activatePlan: vi.fn((plan: WorkoutPlan) => of({...plan,status:'ACTIVE'})),
       archivePlan: vi.fn((plan: WorkoutPlan) => of({...plan,status:'ARCHIVED'})),
-      generatePlanSuggestion: vi.fn(() => of({id:'suggestion-1',planId:'plan-1',basePlanVersion:1,contextFingerprint:'fingerprint',status:'AVAILABLE',source:'DEMO',explanation:'Complemento validado',observations:[],changes:[{operation:'ADD',dayId:'day-1',targetItemId:null,exerciseId:'exercise-1',position:1,sets:3,repetitionMin:8,repetitionMax:12,durationSeconds:null,restSeconds:60,reason:'Compatível com o perfil'}],createdAt:new Date().toISOString(),expiresAt:new Date().toISOString()})),
-      applySuggestion: vi.fn((plan: WorkoutPlan) => of({...plan,version:plan.version+1}))
+      generatePlanSuggestion: vi.fn(() => of({id:'suggestion-1',planId:'plan-1',basePlanVersion:1,contextFingerprint:'fingerprint',status:'AVAILABLE',source:'DEMO',kind:'WORKOUT_COMPLETION',explanation:'Treino completo',observations:[],changes:[],completion:{newDays:[],existingDayAdditions:[]},createdAt:new Date().toISOString(),expiresAt:new Date().toISOString()})),
+      applySuggestion: vi.fn((plan: WorkoutPlan) => of({...plan,version:plan.version+1,
+        days:[{id:'day-1',position:1,name:'Dia 1',items:[]}]}))
     };
     TestBed.configureTestingModule({
       imports:[PlanEditorComponent],
@@ -45,7 +46,6 @@ describe('PlanEditorComponent', () => {
   it('salva, gera JSON estruturado e aplica a sugestão nesta ordem', () => {
     const fixture=TestBed.createComponent(PlanEditorComponent);
     const component=fixture.componentInstance;
-    component.addDay();
     component.addAiSuggestion();
     expect(api.savePlan).toHaveBeenCalledOnce();
     expect(api.generatePlanSuggestion).toHaveBeenCalledWith('plan-1');

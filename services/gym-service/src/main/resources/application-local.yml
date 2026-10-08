@@ -1,4 +1,7 @@
 logging:
   level:
     com.gymflow: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%X{correlationId:-no-correlation}] %logger{36} - %msg%n"
+management.endpoints.web.exposure.include: health,info,metrics,prometheus
 

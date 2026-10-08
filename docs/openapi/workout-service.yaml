@@ -69,15 +69,21 @@ components:
         preferredEquipmentTypeIds: {type: array, maxItems: 100, uniqueItems: true, items: {type: string, format: uuid}}
     CreatePlan:
       type: object
-      required: [unitId, name]
-      properties: {unitId: {type: string, format: uuid}, name: {type: string, maxLength: 120}}
+      required: [unitId, name, goal, targetDaysPerWeek]
+      properties:
+        unitId: {type: string, format: uuid}
+        name: {type: string, maxLength: 120}
+        goal: {type: string, enum: [HYPERTROPHY, STRENGTH, GENERAL_FITNESS, ENDURANCE]}
+        targetDaysPerWeek: {type: integer, minimum: 1, maximum: 7}
     UpdatePlan:
       type: object
-      required: [version, unitId, name, days]
+      required: [version, unitId, name, goal, targetDaysPerWeek, days]
       properties:
         version: {type: integer, format: int64, minimum: 0}
         unitId: {type: string, format: uuid}
         name: {type: string, maxLength: 120}
+        goal: {type: string, enum: [HYPERTROPHY, STRENGTH, GENERAL_FITNESS, ENDURANCE]}
+        targetDaysPerWeek: {type: integer, minimum: 1, maximum: 7}
         days: {type: array, maxItems: 7, items: {$ref: '#/components/schemas/WorkoutDay'}}
     WorkoutDay:
       type: object
@@ -113,11 +119,13 @@ components:
         expectedPlanVersion: {type: integer, format: int64, minimum: 0}
     PlanSummary:
       type: object
-      required: [id, unitId, name, status, version, dayCount, inventoryRevalidationRequired, updatedAt]
+      required: [id, unitId, name, goal, targetDaysPerWeek, status, version, dayCount, inventoryRevalidationRequired, updatedAt]
       properties:
         id: {type: string, format: uuid}
         unitId: {type: string, format: uuid}
         name: {type: string}
+        goal: {type: string, enum: [HYPERTROPHY, STRENGTH, GENERAL_FITNESS, ENDURANCE]}
+        targetDaysPerWeek: {type: integer, minimum: 1, maximum: 7}
         status: {type: string, enum: [DRAFT, ACTIVE, ARCHIVED]}
         version: {type: integer, format: int64, minimum: 0}
         dayCount: {type: integer, minimum: 0, maximum: 7}
@@ -125,11 +133,13 @@ components:
         updatedAt: {type: string, format: date-time}
     Plan:
       type: object
-      required: [id, unitId, name, status, version, days, inventoryRevalidationRequired, eligibilityCheckAvailable, issues, createdAt, updatedAt]
+      required: [id, unitId, name, goal, targetDaysPerWeek, status, version, days, inventoryRevalidationRequired, eligibilityCheckAvailable, issues, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
         unitId: {type: string, format: uuid}
         name: {type: string}
+        goal: {type: string, enum: [HYPERTROPHY, STRENGTH, GENERAL_FITNESS, ENDURANCE]}
+        targetDaysPerWeek: {type: integer, minimum: 1, maximum: 7}
         status: {type: string, enum: [DRAFT, ACTIVE, ARCHIVED]}
         version: {type: integer, format: int64, minimum: 0}
         days: {type: array, maxItems: 7, items: {$ref: '#/components/schemas/WorkoutDay'}}

@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 class AssistantServiceTest {
@@ -32,36 +33,41 @@ class AssistantServiceTest {
         UUID exerciseId = UUID.randomUUID();
         AssistantContext context = new AssistantContext(
             new AssistantContext.Profile("STRENGTH", "BEGINNER", 3, 45, Set.of()),
-            new AssistantContext.Plan(planId, UUID.randomUUID(), "Plano", "DRAFT", 4,
+            new AssistantContext.Plan(planId, UUID.randomUUID(), "Plano", "STRENGTH", 3, "DRAFT", 4,
                 List.of(new AssistantContext.Day(dayId, 1, "Dia 1", List.of()))),
             List.of(), List.of(), "fingerprint");
-        AssistantModels.SuggestionChange change = new AssistantModels.SuggestionChange(
-            AssistantModels.Operation.ADD, dayId, null, exerciseId, 1, 3, 8, 12, null, 60, "Complemento");
-        TrainingAssistantProvider.ProviderResult result = new TrainingAssistantProvider.ProviderResult(
-            "Sugestão estruturada", false, List.of(), List.of(change));
+        AssistantModels.SuggestedItem item = new AssistantModels.SuggestedItem(
+            exerciseId, 1, 3, 8, 12, null, 60, "Complemento");
+        AssistantModels.CompletionProposal completion = new AssistantModels.CompletionProposal(
+            List.of(new AssistantModels.SuggestedDay(2, "Dia 2", List.of(item)),
+                new AssistantModels.SuggestedDay(3, "Dia 3", List.of(item))),
+            List.of(new AssistantModels.ExistingDayAddition(dayId, List.of(item))));
+        TrainingAssistantProvider.CompletionResult result = new TrainingAssistantProvider.CompletionResult(
+            "Sugestão estruturada", false, List.of(), completion);
         AssistantModels.ConversationResponse conversation = new AssistantModels.ConversationResponse(
             UUID.randomUUID(), planId, Instant.now());
         AssistantModels.SuggestionResponse saved = new AssistantModels.SuggestionResponse(
             UUID.randomUUID(), planId, 4, "fingerprint", "AVAILABLE", AssistantModels.Source.DEMO,
-            result.reply(), List.of(), List.of(change), Instant.now(), Instant.now().plusSeconds(600));
+            AssistantModels.SuggestionKind.WORKOUT_COMPLETION, result.reply(), List.of(), List.of(), completion,
+            Instant.now(), Instant.now().plusSeconds(600));
 
         when(contexts.build(eq(planId), eq("token"), eq(List.of()))).thenReturn(context);
         when(providers.selected()).thenReturn(provider);
-        when(provider.generate(eq(context), any())).thenReturn(result);
-        when(validator.validate(result, context)).thenReturn(result);
+        when(provider.complete(context)).thenReturn(result);
+        when(validator.validateCompletion(result, context)).thenReturn(result);
         when(provider.source()).thenReturn(AssistantModels.Source.DEMO);
         when(repository.createConversation("student", planId)).thenReturn(conversation);
-        when(repository.saveSuggestion(eq(conversation.id()), eq("student"), eq(planId), eq(4L),
+        when(repository.saveCompletionSuggestion(eq(conversation.id()), eq("student"), eq(planId), eq(4L),
             eq("fingerprint"), eq(AssistantModels.Source.DEMO), eq(result.reply()), eq(List.of()),
-            eq(List.of(change)), any())).thenReturn(saved);
+            eq(completion), any())).thenReturn(saved);
 
         AssistantService service = new AssistantService(repository, contexts, providers, validator,
-            new AssistantRateLimiter(10, 1), Duration.ofMinutes(10), 10);
+            new AssistantRateLimiter(10, 1), new SimpleMeterRegistry(), Duration.ofMinutes(10), 10);
 
         assertThat(service.generateForPlan("student", planId, "token")).isEqualTo(saved);
         verify(repository).createConversation("student", planId);
-        verify(repository).saveSuggestion(eq(conversation.id()), eq("student"), eq(planId), eq(4L),
+        verify(repository).saveCompletionSuggestion(eq(conversation.id()), eq("student"), eq(planId), eq(4L),
             eq("fingerprint"), eq(AssistantModels.Source.DEMO), eq(result.reply()), eq(List.of()),
-            eq(List.of(change)), any());
+            eq(completion), any());
     }
 }

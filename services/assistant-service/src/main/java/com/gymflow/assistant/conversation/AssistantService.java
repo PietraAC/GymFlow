@@ -5,7 +5,8 @@ import com.gymflow.assistant.integration.ContextService;
 import com.gymflow.assistant.provider.ProviderOutputValidator;
 import com.gymflow.assistant.provider.ProviderRouter;
 import com.gymflow.assistant.provider.TrainingAssistantProvider;
-import com.gymflow.assistant.shared.error.InvalidRequestException;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -15,24 +16,22 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class AssistantService {
-    private static final String DIRECT_SUGGESTION_INTENT = """
-        Gere uma sugestão estruturada para complementar o rascunho atual usando somente exercícios elegíveis.
-        Retorne apenas os dados do schema. Não faça perguntas, não crie dias e não altere carga em kg.
-        """;
     private final AssistantRepository repository;
     private final ContextService contexts;
     private final ProviderRouter providers;
     private final ProviderOutputValidator validator;
     private final AssistantRateLimiter limiter;
+    private final MeterRegistry metrics;
     private final Duration suggestionTtl;
     private final int historyLimit;
 
     public AssistantService(AssistantRepository repository, ContextService contexts, ProviderRouter providers,
                             ProviderOutputValidator validator, AssistantRateLimiter limiter,
+                            MeterRegistry metrics,
                             @Value("${app.ai.suggestion-ttl}") Duration suggestionTtl,
                             @Value("${app.ai.history-limit}") int historyLimit) {
         this.repository = repository; this.contexts = contexts; this.providers = providers; this.validator = validator;
-        this.limiter = limiter; this.suggestionTtl = suggestionTtl; this.historyLimit = historyLimit;
+        this.limiter = limiter; this.metrics = metrics; this.suggestionTtl = suggestionTtl; this.historyLimit = historyLimit;
     }
 
     public AssistantModels.ConversationResponse create(String subject, UUID planId, String token) {
@@ -55,18 +54,34 @@ public class AssistantService {
 
     public AssistantModels.SuggestionResponse generateForPlan(String subject, UUID planId, String token) {
         return limiter.execute(subject, () -> {
+            Timer.Sample sample = Timer.start(metrics);
+            String source = "unselected";
             AssistantContext context = contexts.build(planId, token, List.of());
-            TrainingAssistantProvider provider = providers.selected();
-            TrainingAssistantProvider.ProviderResult result = validator.validate(
-                provider.generate(context, DIRECT_SUGGESTION_INTENT), context);
-            if (result.changes().isEmpty()) {
-                throw new InvalidRequestException("Não foi encontrada uma alteração elegível para este rascunho");
+            try {
+                TrainingAssistantProvider provider = providers.selected();
+                source = provider.source().name().toLowerCase();
+                TrainingAssistantProvider.CompletionResult result = validator.validateCompletion(
+                    provider.complete(context), context);
+                AssistantModels.ConversationResponse conversation = repository.createConversation(subject, planId);
+                AssistantModels.SuggestionResponse suggestion = repository.saveCompletionSuggestion(
+                    conversation.id(), subject, planId, context.plan().version(), context.fingerprint(), provider.source(),
+                    result.reply(), result.observations(), result.completion(), Instant.now().plus(suggestionTtl));
+                int changeCount = result.completion().newDays().stream().mapToInt(day -> day.items().size()).sum()
+                    + result.completion().existingDayAdditions().stream().mapToInt(day -> day.items().size()).sum();
+                metrics.summary("gymflow.ai.suggestion.changes", "source", source)
+                    .record(changeCount);
+                recordSuggestion(sample, source, "success");
+                return suggestion;
+            } catch (RuntimeException exception) {
+                recordSuggestion(sample, source, "failure");
+                throw exception;
             }
-            AssistantModels.ConversationResponse conversation = repository.createConversation(subject, planId);
-            return repository.saveSuggestion(conversation.id(), subject, planId, context.plan().version(),
-                context.fingerprint(), provider.source(), result.reply(), result.observations(), result.changes(),
-                Instant.now().plus(suggestionTtl));
         });
+    }
+
+    private void recordSuggestion(Timer.Sample sample, String source, String outcome) {
+        metrics.counter("gymflow.ai.suggestions", "source", source, "outcome", outcome).increment();
+        sample.stop(metrics.timer("gymflow.ai.suggestion.duration", "source", source, "outcome", outcome));
     }
 
     private AssistantModels.AssistantTurnResponse generate(String subject, UUID conversationId, String text, String token) {

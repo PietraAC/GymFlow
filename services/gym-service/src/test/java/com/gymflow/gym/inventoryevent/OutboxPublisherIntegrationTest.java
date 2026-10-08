@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.UUID;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,7 +63,8 @@ class OutboxPublisherIntegrationTest {
             UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 4, 7);
         repository.append(event, "inventory.availability.changed.v1");
 
-        new OutboxPublisher(repository, rabbit, "gymflow.inventory.test", Duration.ofSeconds(5), 20).publishPending();
+        new OutboxPublisher(repository, rabbit, new SimpleMeterRegistry(), "gymflow.inventory.test", Duration.ofSeconds(5), 20)
+            .publishPending();
 
         assertThat(rabbit.receive("gymflow.inventory.test.queue", 5_000)).isNotNull();
         assertThat(jdbc.queryForObject("SELECT status FROM outbox_events WHERE event_id=?", String.class, event.eventId()))

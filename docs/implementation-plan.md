@@ -20,7 +20,7 @@
 - Conversations, suggestions, fingerprints, expiration, and confirmed application.
 - `TrainingAssistantProvider`, a deterministic demo adapter, and complete output validation.
 - Optional Gemini integration through configuration only; no network access in tests; local rate limiting.
-- A single explicit “Adicionar sugestão da IA” action saves the draft, requests schema-constrained JSON, revalidates it in `workout-service`, and applies it idempotently.
+- The first direct assistant action saved the draft, requested schema-constrained JSON, revalidated it in `workout-service`, and applied it idempotently; Stage 6 expands that contract to complete the requested week.
 - The browser never supplies model-created identifiers as trusted workout data; the model cannot set load in kilograms.
 
 ## Stage 4 — Events (complete)
@@ -31,10 +31,30 @@
 - Potentially affected non-archived plans are marked for inventory revalidation.
 - Synchronous REST eligibility validation remains in place for critical mutations.
 
-## Stage 5 — Portfolio hardening
+## Stage 5 — Portfolio hardening (complete)
 
-- Continuous integration, browser tests, screenshots, architecture documentation, and a demo walkthrough.
-- Evaluate a gateway and demonstrative deployment only when a concrete requirement exists.
+- GitHub Actions runs backend tests, frontend tests/build, and the authenticated Chromium journey.
+- Playwright verifies profile setup, draft creation, and direct structured AI suggestion application.
+- Local Prometheus metrics, domain counters/timers, correlation-aware logs, and message correlation.
+- Architecture diagrams, ADRs, sanitized screenshots, and a reproducible demo walkthrough.
+- Gateway and demonstrative deployment were evaluated and deliberately deferred because no concrete requirement exists.
+
+## Stage 6 — AI-completed weekly workouts (complete)
+
+- Each plan stores its own goal and target weekly frequency, initially suggested from the student profile.
+- The direct assistant action now returns a typed `WORKOUT_COMPLETION` proposal with missing days and additions for existing days.
+- Provider output may reference only eligible exercise IDs; it cannot define load, delete existing content, activate a plan, or persist changes directly.
+- `workout-service` remains authoritative: it checks ownership, version, expiration, single use, final day count, exercise kinds, and current branch eligibility before applying the proposal.
+- Empty and partial drafts are both supported. Existing days/items are preserved and the result remains a draft for human review.
+- The editor presents the whole week as expandable day summaries with exercise names and detailed series, repetitions, duration, rest, and optional user-defined load.
+
+## Next stage — Production deployment readiness (not started)
+
+- Select a real hosting target and threat model before introducing a gateway, service discovery, or orchestration.
+- Move secrets to a managed secret store; enable TLS, production-mode Keycloak, restricted management endpoints, environment-specific CORS, durable backups, and recovery procedures.
+- Define consent, minimization, retention, and deletion rules for context sent to an external AI provider.
+- Create a versioned evaluation set for workout-completion quality, safety, schema adherence, and eligible-catalog grounding.
+- Add deployment manifests, dashboards, alerts, and SLOs only after the operational requirements are concrete. Kubernetes remains deferred rather than implied by the current local architecture.
 
 ## Decisions and assumptions
 

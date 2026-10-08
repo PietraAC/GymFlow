@@ -3,6 +3,7 @@ package com.gymflow.assistant.provider;
 import com.gymflow.assistant.conversation.AssistantModels;
 import com.gymflow.assistant.integration.AssistantContext;
 import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -52,6 +53,60 @@ public class DemoTrainingAssistantProvider implements TrainingAssistantProvider 
                     ? "O candidato também corresponde a uma preferência de equipamento declarada."
                     : "Preferências são tratadas como preferência, não como restrição obrigatória."),
             List.of(change));
+    }
+
+    @Override
+    public CompletionResult complete(AssistantContext context) {
+        List<AssistantContext.Exercise> candidates = context.eligibleExercises().stream()
+            .sorted(Comparator.comparing((AssistantContext.Exercise exercise) ->
+                    !preferred(exercise, context.profile().preferredEquipmentTypeIds()))
+                .thenComparing(AssistantContext.Exercise::name).thenComparing(AssistantContext.Exercise::id))
+            .toList();
+        if (candidates.isEmpty()) {
+            return new CompletionResult("NÃ£o encontrei exercÃ­cios elegÃ­veis para montar o treino.", false,
+                List.of("O catÃ¡logo elegÃ­vel da unidade estÃ¡ vazio."),
+                new AssistantModels.CompletionProposal(List.of(), List.of()));
+        }
+        List<AssistantModels.ExistingDayAddition> additions = new ArrayList<>();
+        int cursor = 0;
+        for (AssistantContext.Day day : context.plan().days()) {
+            int missingItems = Math.max(0, 4 - day.items().size());
+            if (missingItems == 0) continue;
+            Set<UUID> existing = day.items().stream().map(AssistantContext.Item::exerciseId).collect(java.util.stream.Collectors.toSet());
+            List<AssistantModels.SuggestedItem> items = itemsForDay(candidates, existing,
+                day.items().size() + 1, cursor, missingItems);
+            cursor += items.size();
+            additions.add(new AssistantModels.ExistingDayAddition(day.id(), items));
+        }
+        List<AssistantModels.SuggestedDay> newDays = new ArrayList<>();
+        for (int position = context.plan().days().size() + 1;
+             position <= context.plan().targetDaysPerWeek(); position++) {
+            List<AssistantModels.SuggestedItem> items = itemsForDay(candidates, Set.of(), 1, cursor, 4);
+            cursor += items.size();
+            newDays.add(new AssistantModels.SuggestedDay(position, "Dia " + position, items));
+        }
+        return new CompletionResult("Montei a estrutura completa do treino com base no objetivo, na frequÃªncia semanal e no catÃ¡logo da unidade.",
+            false, List.of("Revise os exercÃ­cios e ajuste cargas manualmente antes de ativar o plano.",
+                "A proposta preserva tudo o que jÃ¡ estava no rascunho."),
+            new AssistantModels.CompletionProposal(newDays, additions));
+    }
+
+    private List<AssistantModels.SuggestedItem> itemsForDay(List<AssistantContext.Exercise> candidates,
+                                                             Set<UUID> existing, int firstPosition, int cursor,
+                                                             int requested) {
+        List<AssistantModels.SuggestedItem> result = new ArrayList<>();
+        Set<UUID> used = new HashSet<>(existing);
+        int desired = Math.min(requested, Math.max(0, candidates.size() - existing.size()));
+        for (int offset = 0; result.size() < desired && offset < candidates.size() * 2; offset++) {
+            AssistantContext.Exercise exercise = candidates.get((cursor + offset) % candidates.size());
+            if (!used.add(exercise.id())) continue;
+            boolean strength = "STRENGTH".equals(exercise.kind());
+            result.add(new AssistantModels.SuggestedItem(exercise.id(), firstPosition + result.size(),
+                strength ? 3 : null, strength ? 8 : null, strength ? 12 : null,
+                strength ? null : 60, 60,
+                "ExercÃ­cio elegÃ­vel selecionado para compor uma sessÃ£o equilibrada no modo demo."));
+        }
+        return List.copyOf(result);
     }
 
     private boolean preferred(AssistantContext.Exercise exercise, Set<UUID> preferences) {

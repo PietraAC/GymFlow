@@ -17,12 +17,14 @@ describe('ApiService', () => {
   afterEach(() => http.verify());
 
   it('envia versão e agregado ao salvar um rascunho', () => {
-    const plan: WorkoutPlan = { id:'plan-1', unitId:'unit-1', name:'Treino A', status:'DRAFT', version:4,
+    const plan: WorkoutPlan = { id:'plan-1', unitId:'unit-1', name:'Treino A', goal:'STRENGTH', targetDaysPerWeek:3, status:'DRAFT', version:4,
       days:[], inventoryRevalidationRequired:false, eligibilityCheckAvailable:true, issues:[] };
     api.savePlan(plan).subscribe();
     const request = http.expectOne('/workout-api/api/v1/me/plans/plan-1');
     expect(request.request.method).toBe('PUT');
     expect(request.request.body.version).toBe(4);
+    expect(request.request.body.goal).toBe('STRENGTH');
+    expect(request.request.body.targetDaysPerWeek).toBe(3);
     expect(request.request.body.days).toEqual([]);
     request.flush(plan);
   });

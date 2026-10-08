@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gymflow.assistant.conversation.AssistantModels;
 import com.gymflow.assistant.integration.AssistantContext;
 import com.gymflow.assistant.shared.error.ProviderResponseException;
 import com.gymflow.assistant.shared.error.ProviderUnavailableException;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -37,6 +39,60 @@ class GeminiTrainingAssistantProviderTest {
 
         assertThat(result.reply()).isEqualTo("Resposta estruturada");
         assertThat(calls).hasValue(1);
+    }
+
+    @Test void requestsAndParsesACompleteWorkoutProposal() throws Exception {
+        UUID exerciseId = UUID.randomUUID();
+        var item = new AssistantModels.SuggestedItem(exerciseId, 1, 3, 8, 12, null, 60, "Objetivo do plano");
+        var completion = new AssistantModels.CompletionProposal(List.of(
+            new AssistantModels.SuggestedDay(1, "Dia 1", List.of(item)),
+            new AssistantModels.SuggestedDay(2, "Dia 2", List.of(item)),
+            new AssistantModels.SuggestedDay(3, "Dia 3", List.of(item))), List.of());
+        String providerJson = mapper.writeValueAsString(new TrainingAssistantProvider.CompletionResult(
+            "Treino completo", false, List.of("Revise o rascunho"), completion));
+        AtomicReference<String> body = new AtomicReference<>();
+        byte[] response = geminiResponse(providerJson).getBytes(StandardCharsets.UTF_8);
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            body.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        var result = provider().complete(context());
+
+        assertThat(result.completion().newDays()).hasSize(3);
+        assertThat(body.get()).contains("targetDaysPerWeek", "newDays", "existingDayAdditions");
+    }
+
+    @Test void sendsKeyInHeaderAndOmitsUnsupportedSamplingParameters() throws Exception {
+        AtomicReference<String> apiKeyHeader = new AtomicReference<>();
+        AtomicReference<String> requestPath = new AtomicReference<>();
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        String providerJson = mapper.writeValueAsString(new TrainingAssistantProvider.ProviderResult(
+            "Resposta estruturada", false, List.of(), List.of()));
+        byte[] response = geminiResponse(providerJson).getBytes(StandardCharsets.UTF_8);
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            apiKeyHeader.set(exchange.getRequestHeaders().getFirst("x-goog-api-key"));
+            requestPath.set(exchange.getRequestURI().toString());
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        provider().generate(context(), "Mensagem");
+
+        assertThat(apiKeyHeader).hasValue("test-key");
+        assertThat(requestPath.get()).doesNotContain("key=");
+        assertThat(requestBody.get()).contains("responseSchema", "maxOutputTokens", "nullable")
+            .doesNotContain("temperature", "[\"string\",\"null\"]", "[\"integer\",\"null\"]");
     }
 
     @Test void mapsProviderRateLimitWithoutRetry() {

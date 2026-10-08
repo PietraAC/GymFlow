@@ -9,7 +9,12 @@ public record AssistantContext(Profile profile, Plan plan, List<Exercise> eligib
                                List<AssistantModels.MessageResponse> history, String fingerprint) {
     public record Profile(String goal, String experienceLevel, int daysPerWeek, int sessionDurationMinutes,
                           Set<UUID> preferredEquipmentTypeIds) {}
-    public record Plan(UUID id, UUID unitId, String name, String status, long version, List<Day> days) {}
+    public record Plan(UUID id, UUID unitId, String name, String goal, int targetDaysPerWeek,
+                       String status, long version, List<Day> days) {
+        public Plan(UUID id, UUID unitId, String name, String status, long version, List<Day> days) {
+            this(id, unitId, name, "GENERAL_FITNESS", 3, status, version, days);
+        }
+    }
     public record Day(UUID id, int position, String name, List<Item> items) {}
     public record Item(UUID id, UUID exerciseId, int position, Integer sets, Integer repetitionMin,
                        Integer repetitionMax, Integer durationSeconds, Integer restSeconds, String notes) {}

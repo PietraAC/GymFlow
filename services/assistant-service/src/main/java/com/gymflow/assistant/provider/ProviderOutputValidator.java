@@ -61,6 +61,117 @@ public class ProviderOutputValidator {
         return new TrainingAssistantProvider.ProviderResult(result.reply().trim(), result.needsProfessionalGuidance(), observations, changes);
     }
 
+    public TrainingAssistantProvider.CompletionResult validateCompletion(
+        TrainingAssistantProvider.CompletionResult result, AssistantContext context) {
+        if (result == null || result.reply() == null || result.reply().isBlank() || result.reply().length() > 2000) {
+            throw invalid("Resposta textual ausente ou longa demais");
+        }
+        List<String> observations = result.observations() == null ? List.of() : result.observations();
+        if (observations.size() > 20 || observations.stream().anyMatch(value -> value == null || value.length() > 500)) {
+            throw invalid("ObservaÃ§Ãµes invÃ¡lidas");
+        }
+        if (result.needsProfessionalGuidance() || result.completion() == null) {
+            throw invalid("A conclusÃ£o automÃ¡tica precisa retornar uma proposta aplicÃ¡vel");
+        }
+        List<AssistantModels.SuggestedDay> newDays = result.completion().newDays() == null
+            ? List.of() : result.completion().newDays();
+        List<AssistantModels.ExistingDayAddition> additions = result.completion().existingDayAdditions() == null
+            ? List.of() : result.completion().existingDayAdditions();
+        int currentDays = context.plan().days().size();
+        int targetDays = context.plan().targetDaysPerWeek();
+        if (currentDays > targetDays || newDays.size() != targetDays - currentDays) {
+            throw invalid("A proposta deve completar exatamente a quantidade de dias definida no plano");
+        }
+        Map<UUID, AssistantContext.Day> days = context.plan().days().stream()
+            .collect(Collectors.toMap(AssistantContext.Day::id, Function.identity()));
+        Map<UUID, AssistantContext.Exercise> exercises = context.eligibleExercises().stream()
+            .collect(Collectors.toMap(AssistantContext.Exercise::id, Function.identity()));
+        Set<UUID> touchedDays = new HashSet<>();
+        int itemCount = 0;
+        for (AssistantModels.ExistingDayAddition addition : additions) {
+            if (addition == null || addition.dayId() == null || !touchedDays.add(addition.dayId()) || !days.containsKey(addition.dayId())) {
+                throw invalid("A proposta indicou um dia existente invÃ¡lido ou repetido");
+            }
+            AssistantContext.Day day = days.get(addition.dayId());
+            List<AssistantModels.SuggestedItem> items = safeItems(addition.items());
+            if (day.items().isEmpty() && items.isEmpty()) {
+                throw invalid("Todo dia vazio precisa receber exercícios na proposta");
+            }
+            validateItems(items, exercises, day.items().stream().map(AssistantContext.Item::exerciseId).collect(Collectors.toSet()),
+                day.items().size() + 1);
+            itemCount += items.size();
+        }
+        for (AssistantContext.Day day : context.plan().days()) {
+            if (day.items().isEmpty() && !touchedDays.contains(day.id())) {
+                throw invalid("Todo dia vazio precisa receber exercÃ­cios na proposta");
+            }
+        }
+        Set<Integer> positions = new HashSet<>();
+        for (AssistantModels.SuggestedDay day : newDays) {
+            if (day == null || day.position() == null || day.position() < 1 || day.position() > targetDays
+                || !positions.add(day.position()) || day.name() == null || day.name().isBlank() || day.name().length() > 80) {
+                throw invalid("Novo dia incompleto ou invÃ¡lido");
+            }
+            List<AssistantModels.SuggestedItem> items = safeItems(day.items());
+            if (items.isEmpty()) throw invalid("Todo novo dia precisa ter exercÃ­cios");
+            validateItems(items, exercises, Set.of(), 1);
+            itemCount += items.size();
+        }
+        for (int position = currentDays + 1; position <= targetDays; position++) {
+            if (!positions.contains(position)) throw invalid("As posiÃ§Ãµes dos novos dias devem ser contÃ­guas");
+        }
+        if (itemCount == 0 || itemCount > 60) throw invalid("Quantidade de exercÃ­cios sugeridos invÃ¡lida");
+        AssistantModels.CompletionProposal completion = new AssistantModels.CompletionProposal(newDays, additions);
+        return new TrainingAssistantProvider.CompletionResult(result.reply().trim(), false, observations, completion);
+    }
+
+    private List<AssistantModels.SuggestedItem> safeItems(List<AssistantModels.SuggestedItem> items) {
+        return items == null ? List.of() : items;
+    }
+
+    private void validateItems(List<AssistantModels.SuggestedItem> items,
+                               Map<UUID, AssistantContext.Exercise> exercises, Set<UUID> existing,
+                               int firstPosition) {
+        if (items.size() > 12) throw invalid("Um dia nÃ£o pode receber mais de 12 exercÃ­cios");
+        Set<UUID> exerciseIds = new HashSet<>(existing);
+        Set<Integer> positions = new HashSet<>();
+        for (int index = 0; index < items.size(); index++) {
+            AssistantModels.SuggestedItem item = items.get(index);
+            int expectedPosition = firstPosition + index;
+            if (item == null || item.exerciseId() == null || item.position() == null
+                || item.position() != expectedPosition || !positions.add(item.position())
+                || !exerciseIds.add(item.exerciseId())) {
+                throw invalid("Item sugerido incompleto, repetido ou fora de ordem");
+            }
+            validateSuggestedItem(item, exercises);
+            if (item.reason() == null || item.reason().isBlank() || item.reason().length() > 500) {
+                throw invalid("Todo exercÃ­cio sugerido precisa de uma justificativa curta");
+            }
+        }
+    }
+
+    private void validateSuggestedItem(AssistantModels.SuggestedItem item,
+                                       Map<UUID, AssistantContext.Exercise> exercises) {
+        AssistantContext.Exercise exercise = exercises.get(item.exerciseId());
+        if (exercise == null) throw invalid("A sugestÃ£o inventou ou usou um exercÃ­cio inelegÃ­vel");
+        int count = (item.sets() == null ? 0 : 1) + (item.repetitionMin() == null ? 0 : 1)
+            + (item.repetitionMax() == null ? 0 : 1);
+        if (count != 0 && count != 3) throw invalid("SÃ©ries e faixa de repetiÃ§Ãµes devem estar completas");
+        if ("STRENGTH".equals(exercise.kind())) {
+            if (count != 3 || item.durationSeconds() != null) throw invalid("ExercÃ­cio de forÃ§a com parÃ¢metros invÃ¡lidos");
+        } else if (item.durationSeconds() == null && count == 0) {
+            throw invalid("Aquecimento ou alongamento sem duraÃ§Ã£o ou repetiÃ§Ãµes");
+        }
+        if (item.sets() != null && (item.sets() < 1 || item.sets() > 10)
+            || item.repetitionMin() != null && (item.repetitionMin() < 1 || item.repetitionMin() > 100)
+            || item.repetitionMax() != null && (item.repetitionMax() < 1 || item.repetitionMax() > 100)
+            || item.durationSeconds() != null && (item.durationSeconds() < 5 || item.durationSeconds() > 1800)
+            || item.restSeconds() != null && (item.restSeconds() < 0 || item.restSeconds() > 600)
+            || item.repetitionMin() != null && item.repetitionMax() != null && item.repetitionMin() > item.repetitionMax()) {
+            throw invalid("ParÃ¢metros fora dos limites tÃ©cnicos");
+        }
+    }
+
     private void validateExercise(AssistantModels.SuggestionChange change, Map<UUID, AssistantContext.Exercise> exercises) {
         AssistantContext.Exercise exercise = exercises.get(change.exerciseId());
         if (exercise == null) throw invalid("A sugestão inventou ou usou um exercício inelegível");

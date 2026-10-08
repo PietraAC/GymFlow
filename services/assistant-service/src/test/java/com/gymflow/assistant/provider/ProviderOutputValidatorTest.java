@@ -60,4 +60,23 @@ class ProviderOutputValidatorTest {
         assertThatThrownBy(() -> validator.validate(result, context)).isInstanceOf(ProviderResponseException.class)
             .hasMessageContaining("ADD");
     }
+
+    @Test void validatesACompleteWeekAndRejectsInventedCatalogIds() {
+        UUID dayId = UUID.randomUUID(), exerciseId = UUID.randomUUID();
+        var exercise = new AssistantContext.Exercise(exerciseId, "Exercicio", "STRENGTH", Set.of(), Set.of(),
+            "PUSH", "BEGINNER", "Instrucao", List.of());
+        var context = new AssistantContext(new AssistantContext.Profile("STRENGTH", "BEGINNER", 3, 45, Set.of()),
+            new AssistantContext.Plan(UUID.randomUUID(), UUID.randomUUID(), "Plano", "STRENGTH", 3, "DRAFT", 1,
+                List.of(new AssistantContext.Day(dayId, 1, "A", List.of()))), List.of(exercise), List.of(), "fp");
+        var valid = new AssistantModels.SuggestedItem(exerciseId, 1, 3, 8, 12, null, 60, "Razao");
+        var invented = new AssistantModels.SuggestedItem(UUID.randomUUID(), 1, 3, 8, 12, null, 60, "Razao");
+        var completion = new AssistantModels.CompletionProposal(
+            List.of(new AssistantModels.SuggestedDay(2, "B", List.of(valid)),
+                new AssistantModels.SuggestedDay(3, "C", List.of(invented))),
+            List.of(new AssistantModels.ExistingDayAddition(dayId, List.of(valid))));
+        var result = new TrainingAssistantProvider.CompletionResult("Resposta", false, List.of(), completion);
+
+        assertThatThrownBy(() -> validator.validateCompletion(result, context))
+            .isInstanceOf(ProviderResponseException.class).hasMessageContaining("inventou");
+    }
 }

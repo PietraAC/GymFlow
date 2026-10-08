@@ -1,5 +1,6 @@
 package com.gymflow.workout.plan;
 
+import com.gymflow.workout.profile.Goal;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -23,6 +24,8 @@ public class WorkoutPlan {
     @Column(name = "identity_subject", nullable = false, length = 100) private String identitySubject;
     @Column(name = "unit_id", nullable = false) private UUID unitId;
     @Column(nullable = false, length = 120) private String name;
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 30) private Goal goal;
+    @Column(name = "target_days_per_week", nullable = false) private int targetDaysPerWeek;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) private PlanStatus status;
     @Version @Column(nullable = false) private long version;
     @Column(name = "inventory_revalidation_required", nullable = false) private boolean inventoryRevalidationRequired;
@@ -32,14 +35,22 @@ public class WorkoutPlan {
     @OrderBy("position ASC") private List<WorkoutDay> days = new ArrayList<>();
 
     protected WorkoutPlan() {}
-    public WorkoutPlan(String subject, UUID unitId, String name) {
-        this.id = UUID.randomUUID(); this.identitySubject = subject; this.unitId = unitId; this.name = name.trim(); this.status = PlanStatus.DRAFT;
+    public WorkoutPlan(String subject, UUID unitId, String name, Goal goal, int targetDaysPerWeek) {
+        this.id = UUID.randomUUID(); this.identitySubject = subject; this.unitId = unitId; this.name = name.trim();
+        this.goal = goal; this.targetDaysPerWeek = targetDaysPerWeek; this.status = PlanStatus.DRAFT;
     }
-    public void replace(UUID unitId, String name, List<WorkoutDay> newDays) {
-        this.unitId = unitId; this.name = name.trim(); days.clear(); newDays.forEach(this::addDay);
+    public WorkoutPlan(String subject, UUID unitId, String name) {
+        this(subject, unitId, name, Goal.GENERAL_FITNESS, 3);
+    }
+    public void replace(UUID unitId, String name, Goal goal, int targetDaysPerWeek, List<WorkoutDay> newDays) {
+        this.unitId = unitId; this.name = name.trim(); this.goal = goal; this.targetDaysPerWeek = targetDaysPerWeek;
+        days.clear(); newDays.forEach(this::addDay);
         // Changes to the inverse child collection alone do not necessarily dirty the owner.
         // Touching the aggregate root guarantees that its optimistic-lock version advances.
         this.updatedAt = Instant.now();
+    }
+    public void replace(UUID unitId, String name, List<WorkoutDay> newDays) {
+        replace(unitId, name, goal, targetDaysPerWeek, newDays);
     }
     private void addDay(WorkoutDay day) { day.attach(this); days.add(day); }
     public void activate() { status = PlanStatus.ACTIVE; }
@@ -49,6 +60,7 @@ public class WorkoutPlan {
     @PreUpdate void updateTimestamp() { updatedAt = Instant.now(); }
     public UUID getId() { return id; } public String getIdentitySubject() { return identitySubject; }
     public UUID getUnitId() { return unitId; } public String getName() { return name; } public PlanStatus getStatus() { return status; }
+    public Goal getGoal() { return goal; } public int getTargetDaysPerWeek() { return targetDaysPerWeek; }
     public long getVersion() { return version; } public Instant getCreatedAt() { return createdAt; } public Instant getUpdatedAt() { return updatedAt; }
     public boolean isInventoryRevalidationRequired() { return inventoryRevalidationRequired; }
     public List<WorkoutDay> getDays() { return List.copyOf(days); }

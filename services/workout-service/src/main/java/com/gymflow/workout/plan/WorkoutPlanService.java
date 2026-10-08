@@ -32,14 +32,16 @@ public class WorkoutPlanService {
 
     @Transactional
     public PlanModels.PlanResponse create(String subject, PlanModels.CreatePlanRequest request) {
-        WorkoutPlan plan = repository.save(new WorkoutPlan(subject, request.unitId(), request.name()));
+        WorkoutPlan plan = repository.save(new WorkoutPlan(subject, request.unitId(), request.name(),
+            request.goal(), request.targetDaysPerWeek()));
         return response(plan, true, List.of());
     }
 
     @Transactional(readOnly = true)
     public List<PlanModels.PlanSummary> list(String subject) {
         return repository.findByIdentitySubjectOrderByUpdatedAtDesc(subject).stream()
-            .map(plan -> new PlanModels.PlanSummary(plan.getId(), plan.getUnitId(), plan.getName(), plan.getStatus(),
+            .map(plan -> new PlanModels.PlanSummary(plan.getId(), plan.getUnitId(), plan.getName(), plan.getGoal(),
+                plan.getTargetDaysPerWeek(), plan.getStatus(),
                 plan.getVersion(), plan.getDays().size(), plan.isInventoryRevalidationRequired(), plan.getUpdatedAt())).toList();
     }
 
@@ -66,9 +68,13 @@ public class WorkoutPlanService {
         requireVersion(plan, request.version());
         if (plan.getStatus() != PlanStatus.DRAFT) throw new ConflictException("Somente planos em rascunho podem ser editados");
         validator.validateStructure(request.days(), false);
+        if (request.days().size() > request.targetDaysPerWeek()) {
+            throw new com.gymflow.workout.shared.error.InvalidRequestException(
+                "O rascunho possui mais dias do que a frequência semanal definida");
+        }
         validateEligibility(request.unitId(), request.days(), token);
         List<WorkoutDay> days = request.days().stream().map(this::toEntity).toList();
-        plan.replace(request.unitId(), request.name(), days);
+        plan.replace(request.unitId(), request.name(), request.goal(), request.targetDaysPerWeek(), days);
         plan.confirmInventoryRevalidation();
         repository.saveAndFlush(plan);
         return response(plan, true, List.of());
@@ -80,6 +86,10 @@ public class WorkoutPlanService {
         requireVersion(plan, expectedVersion);
         if (plan.getStatus() == PlanStatus.ARCHIVED) throw new ConflictException("Um plano arquivado não pode ser ativado");
         List<PlanModels.DayRequest> days = requestDays(plan);
+        if (days.size() != plan.getTargetDaysPerWeek()) {
+            throw new com.gymflow.workout.shared.error.InvalidRequestException(
+                "Complete os " + plan.getTargetDaysPerWeek() + " dias definidos antes de ativar o plano");
+        }
         validator.validateStructure(days, true);
         validateEligibility(plan.getUnitId(), days, token);
         plan.confirmInventoryRevalidation();
@@ -120,10 +130,13 @@ public class WorkoutPlanService {
             throw new ConflictException("A sugestão expirou ou não está mais disponível");
         }
         if (applications.existsBySuggestionId(suggestion.id())) throw new ConflictException("Esta sugestão já foi aplicada");
-        List<PlanModels.DayRequest> changed = applyChanges(requestDays(plan), suggestion.changes());
+        List<PlanModels.DayRequest> changed = suggestion.kind() == AssistantSuggestionClient.SuggestionKind.WORKOUT_COMPLETION
+            ? applyCompletion(requestDays(plan), suggestion.completion(), plan.getTargetDaysPerWeek())
+            : applyChanges(requestDays(plan), suggestion.changes());
         validator.validateStructure(changed, false);
         validateEligibility(plan.getUnitId(), changed, token);
-        plan.replace(plan.getUnitId(), plan.getName(), changed.stream().map(this::toEntity).toList());
+        plan.replace(plan.getUnitId(), plan.getName(), plan.getGoal(), plan.getTargetDaysPerWeek(),
+            changed.stream().map(this::toEntity).toList());
         plan.confirmInventoryRevalidation();
         repository.saveAndFlush(plan);
         applications.saveAndFlush(new SuggestionApplication(subject, idempotencyKey, suggestion.id(), id, plan.getVersion()));
@@ -173,6 +186,46 @@ public class WorkoutPlanService {
     private PlanModels.ItemRequest suggestedItem(UUID id, AssistantSuggestionClient.Change change, int position) {
         return new PlanModels.ItemRequest(id, change.exerciseId(), position, change.sets(), change.repetitionMin(),
             change.repetitionMax(), change.durationSeconds(), change.restSeconds(), null, null);
+    }
+
+    private List<PlanModels.DayRequest> applyCompletion(List<PlanModels.DayRequest> original,
+                                                         AssistantSuggestionClient.Completion completion,
+                                                         int targetDaysPerWeek) {
+        if (completion == null) throw new ConflictException("A sugestão de treino completo não possui conteúdo");
+        List<PlanModels.DayRequest> result = new ArrayList<>(original);
+        List<AssistantSuggestionClient.ExistingDayAddition> additions = completion.existingDayAdditions() == null
+            ? List.of() : completion.existingDayAdditions();
+        for (AssistantSuggestionClient.ExistingDayAddition addition : additions) {
+            int dayIndex = -1;
+            for (int index = 0; index < result.size(); index++) {
+                if (result.get(index).id().equals(addition.dayId())) { dayIndex = index; break; }
+            }
+            if (dayIndex < 0) throw new ConflictException("A sugestão referencia um dia inexistente");
+            PlanModels.DayRequest day = result.get(dayIndex);
+            List<PlanModels.ItemRequest> items = new ArrayList<>(day.items());
+            for (AssistantSuggestionClient.SuggestedItem item : addition.items()) {
+                items.add(suggestedItem(item, items.size() + 1));
+            }
+            result.set(dayIndex, new PlanModels.DayRequest(day.id(), day.position(), day.name(), items));
+        }
+        List<AssistantSuggestionClient.SuggestedDay> newDays = completion.newDays() == null
+            ? List.of() : completion.newDays();
+        for (AssistantSuggestionClient.SuggestedDay day : newDays) {
+            List<PlanModels.ItemRequest> items = new ArrayList<>();
+            for (AssistantSuggestionClient.SuggestedItem item : day.items()) {
+                items.add(suggestedItem(item, items.size() + 1));
+            }
+            result.add(new PlanModels.DayRequest(null, day.position(), day.name(), items));
+        }
+        if (result.size() != targetDaysPerWeek) {
+            throw new ConflictException("A sugestão não completa a frequência semanal definida");
+        }
+        return result;
+    }
+
+    private PlanModels.ItemRequest suggestedItem(AssistantSuggestionClient.SuggestedItem item, int position) {
+        return new PlanModels.ItemRequest(null, item.exerciseId(), position, item.sets(), item.repetitionMin(),
+            item.repetitionMax(), item.durationSeconds(), item.restSeconds(), null, null);
     }
 
     private void validateEligibility(UUID unitId, List<PlanModels.DayRequest> days, String token) {
@@ -230,7 +283,8 @@ public class WorkoutPlanService {
             day.getName(), day.getItems().stream().map(item -> new PlanModels.ItemResponse(item.getId(), item.getExerciseId(),
                 item.getPosition(), item.getSets(), item.getRepetitionMin(), item.getRepetitionMax(), item.getDurationSeconds(),
                 item.getRestSeconds(), item.getOptionalLoadKg(), item.getNotes())).toList())).toList();
-        return new PlanModels.PlanResponse(plan.getId(), plan.getUnitId(), plan.getName(), plan.getStatus(), plan.getVersion(),
+        return new PlanModels.PlanResponse(plan.getId(), plan.getUnitId(), plan.getName(), plan.getGoal(),
+            plan.getTargetDaysPerWeek(), plan.getStatus(), plan.getVersion(),
             days, plan.isInventoryRevalidationRequired(), available, issues, plan.getCreatedAt(), plan.getUpdatedAt());
     }
 }

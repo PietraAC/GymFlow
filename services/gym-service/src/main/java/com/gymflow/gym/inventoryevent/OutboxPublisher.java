@@ -1,5 +1,6 @@
 package com.gymflow.gym.inventoryevent;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -19,16 +20,19 @@ public class OutboxPublisher {
     private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
     private final OutboxRepository repository;
     private final RabbitTemplate rabbit;
+    private final MeterRegistry metrics;
     private final String exchange;
     private final Duration confirmTimeout;
     private final int batchSize;
 
     public OutboxPublisher(OutboxRepository repository, RabbitTemplate rabbit,
+                           MeterRegistry metrics,
                            @Value("${app.messaging.inventory.exchange}") String exchange,
                            @Value("${app.messaging.inventory.confirm-timeout}") Duration confirmTimeout,
                            @Value("${app.messaging.inventory.batch-size}") int batchSize) {
         this.repository = repository;
         this.rabbit = rabbit;
+        this.metrics = metrics;
         this.exchange = exchange;
         this.confirmTimeout = confirmTimeout;
         this.batchSize = batchSize;
@@ -47,7 +51,9 @@ public class OutboxPublisher {
                 .setContentType("application/json")
                 .setDeliveryMode(MessageDeliveryMode.PERSISTENT)
                 .setMessageId(event.eventId().toString())
+                .setCorrelationId(event.eventId().toString())
                 .setHeader("eventType", EquipmentAvailabilityChanged.TYPE)
+                .setHeader("X-Correlation-Id", event.eventId().toString())
                 .build();
             rabbit.send(exchange, event.routingKey(), message, correlation);
             CorrelationData.Confirm confirm = correlation.getFuture()
@@ -56,9 +62,11 @@ public class OutboxPublisher {
                 throw new IllegalStateException(confirm.getReason() == null ? "Mensagem nao roteada" : confirm.getReason());
             }
             repository.markPublished(event.id());
+            metrics.counter("gymflow.inventory.outbox.publications", "outcome", "success").increment();
         } catch (Exception exception) {
             String category = exception.getClass().getSimpleName();
             repository.markFailed(event.id(), event.attempts(), category.substring(0, Math.min(category.length(), 500)));
+            metrics.counter("gymflow.inventory.outbox.publications", "outcome", "failure").increment();
             log.warn("Inventory outbox publish failed eventId={} category={}", event.eventId(), category);
         }
     }

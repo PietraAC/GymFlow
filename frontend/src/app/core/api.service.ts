@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { AssistantSuggestion, EquipmentType, Exercise, Gym, GymUnit, Page, PlanSummary, StudentProfile, UnitEquipment, WorkoutPlan } from './api.models';
+import { AssistantSuggestion, EquipmentType, Exercise, Goal, Gym, GymUnit, Page, PlanSummary, StudentProfile, UnitEquipment, WorkoutPlan } from './api.models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -19,9 +19,9 @@ export class ApiService {
   profile() { return this.http.get<StudentProfile>('/workout-api/api/v1/me/profile'); }
   saveProfile(profile: StudentProfile) { return this.http.put<StudentProfile>('/workout-api/api/v1/me/profile', profile); }
   plans() { return this.http.get<PlanSummary[]>('/workout-api/api/v1/me/plans'); }
-  createPlan(unitId: string, name: string) { return this.http.post<WorkoutPlan>('/workout-api/api/v1/me/plans', { unitId, name }); }
+  createPlan(unitId: string, name: string, goal: Goal, targetDaysPerWeek: number) { return this.http.post<WorkoutPlan>('/workout-api/api/v1/me/plans', { unitId, name, goal, targetDaysPerWeek }); }
   plan(id: string) { return this.http.get<WorkoutPlan>(`/workout-api/api/v1/me/plans/${id}`); }
-  savePlan(plan: WorkoutPlan) { return this.http.put<WorkoutPlan>(`/workout-api/api/v1/me/plans/${plan.id}`, { version: plan.version, unitId: plan.unitId, name: plan.name, days: plan.days }); }
+  savePlan(plan: WorkoutPlan) { return this.http.put<WorkoutPlan>(`/workout-api/api/v1/me/plans/${plan.id}`, { version: plan.version, unitId: plan.unitId, name: plan.name, goal: plan.goal, targetDaysPerWeek: plan.targetDaysPerWeek, days: plan.days }); }
   activatePlan(plan: WorkoutPlan) { return this.http.post<WorkoutPlan>(`/workout-api/api/v1/me/plans/${plan.id}/activate`, { version: plan.version }); }
   archivePlan(plan: WorkoutPlan) { return this.http.post<WorkoutPlan>(`/workout-api/api/v1/me/plans/${plan.id}/archive`, { version: plan.version }); }
   generatePlanSuggestion(planId: string) { return this.http.post<AssistantSuggestion>(`/assistant-api/api/v1/plans/${planId}/suggestions`, {}); }
