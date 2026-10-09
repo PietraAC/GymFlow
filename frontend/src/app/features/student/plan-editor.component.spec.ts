@@ -43,12 +43,16 @@ describe('PlanEditorComponent', () => {
     expect(sent.days[0].items[0]).toMatchObject({exerciseId:'exercise-1',position:1,sets:3,repetitionMin:8,repetitionMax:12});
   });
 
-  it('salva, gera JSON estruturado e aplica a sugestão nesta ordem', () => {
+  it('salva, gera uma proposta revisável e somente aplica após confirmação', () => {
     const fixture=TestBed.createComponent(PlanEditorComponent);
     const component=fixture.componentInstance;
     component.addAiSuggestion();
     expect(api.savePlan).toHaveBeenCalledOnce();
     expect(api.generatePlanSuggestion).toHaveBeenCalledWith('plan-1');
+    expect(component.pendingSuggestion()?.id).toBe('suggestion-1');
+    expect(api.applySuggestion).not.toHaveBeenCalled();
+
+    component.applyAiSuggestion();
     expect(api.applySuggestion).toHaveBeenCalledWith(expect.objectContaining({id:'plan-1',version:1}),'suggestion-1',expect.any(String));
     expect(api.savePlan.mock.invocationCallOrder[0]).toBeLessThan(api.generatePlanSuggestion.mock.invocationCallOrder[0]);
     expect(api.generatePlanSuggestion.mock.invocationCallOrder[0]).toBeLessThan(api.applySuggestion.mock.invocationCallOrder[0]);

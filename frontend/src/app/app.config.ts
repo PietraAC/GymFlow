@@ -9,6 +9,6 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes),
     provideHttpClient(withInterceptors([authInterceptor])),
-    provideAppInitializer(() => inject(AuthService).initialize())
+    provideAppInitializer(() => { void inject(AuthService).initialize(); })
   ]
 };

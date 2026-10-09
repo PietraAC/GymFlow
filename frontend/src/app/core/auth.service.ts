@@ -7,11 +7,21 @@ export class AuthService {
   readonly authenticated = signal(false);
   readonly profile = signal<KeycloakProfile | null>(null);
   readonly initializationError = signal<string | null>(null);
+  readonly initialized = signal(false);
 
   async initialize(): Promise<void> {
     this.initializationError.set(null);
     try {
-      const authenticated = await this.keycloak.init({ onLoad: 'check-sso', pkceMethod: 'S256', checkLoginIframe: false });
+      const authenticated = await Promise.race([
+        this.keycloak.init({
+          onLoad: 'check-sso',
+          pkceMethod: 'S256',
+          checkLoginIframe: false,
+          silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
+          silentCheckSsoFallback: false
+        }),
+        new Promise<boolean>((_, reject) => window.setTimeout(() => reject(new Error('Tempo limite ao conectar com o Keycloak')), 6000))
+      ]);
       this.authenticated.set(authenticated);
       this.profile.set(authenticated ? this.profileFromToken() : null);
     } catch (error) {
@@ -19,6 +29,8 @@ export class AuthService {
       this.authenticated.set(false);
       this.profile.set(null);
       this.initializationError.set('Não foi possível concluir a autenticação. Atualize a página ou entre novamente.');
+    } finally {
+      this.initialized.set(true);
     }
   }
 

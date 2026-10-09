@@ -20,7 +20,7 @@
 - Conversations, suggestions, fingerprints, expiration, and confirmed application.
 - `TrainingAssistantProvider`, a deterministic demo adapter, and complete output validation.
 - Optional Gemini integration through configuration only; no network access in tests; local rate limiting.
-- The first direct assistant action saved the draft, requested schema-constrained JSON, revalidated it in `workout-service`, and applied it idempotently; Stage 6 expands that contract to complete the requested week.
+- The assistant action saves the draft, requests schema-constrained JSON, and returns a reviewable proposal. Only an explicit student confirmation asks `workout-service` to revalidate and apply it idempotently; Stage 6 expands that contract to complete the requested week.
 - The browser never supplies model-created identifiers as trusted workout data; the model cannot set load in kilograms.
 
 ## Stage 4 — Events (complete)
@@ -34,7 +34,7 @@
 ## Stage 5 — Portfolio hardening (complete)
 
 - GitHub Actions runs backend tests, frontend tests/build, and the authenticated Chromium journey.
-- Playwright verifies profile setup, draft creation, and direct structured AI suggestion application.
+- Playwright verifies profile setup, draft creation, AI proposal review, and explicit structured suggestion application.
 - Local Prometheus metrics, domain counters/timers, correlation-aware logs, and message correlation.
 - Architecture diagrams, ADRs, sanitized screenshots, and a reproducible demo walkthrough.
 - Gateway and demonstrative deployment were evaluated and deliberately deferred because no concrete requirement exists.
@@ -42,11 +42,12 @@
 ## Stage 6 — AI-completed weekly workouts (complete)
 
 - Each plan stores its own goal and target weekly frequency, initially suggested from the student profile.
-- The direct assistant action now returns a typed `WORKOUT_COMPLETION` proposal with missing days and additions for existing days.
+- The assistant action returns a typed `WORKOUT_COMPLETION` proposal with missing days and additions for existing days, presented in a review drawer before application.
 - Provider output may reference only eligible exercise IDs; it cannot define load, delete existing content, activate a plan, or persist changes directly.
 - `workout-service` remains authoritative: it checks ownership, version, expiration, single use, final day count, exercise kinds, and current branch eligibility before applying the proposal.
 - Empty and partial drafts are both supported. Existing days/items are preserved and the result remains a draft for human review.
-- The editor presents the whole week as expandable day summaries with exercise names and detailed series, repetitions, duration, rest, and optional user-defined load.
+- The responsive web editor uses compact day tabs and exercise rows, with expandable details for series, repetitions, duration, rest, and optional user-defined load.
+- Every exercise row reserves a stable media slot. A deterministic placeholder is shown until a matching GIF is added under `frontend/public/exercises/`.
 
 ## Next stage — Production deployment readiness (not started)
 

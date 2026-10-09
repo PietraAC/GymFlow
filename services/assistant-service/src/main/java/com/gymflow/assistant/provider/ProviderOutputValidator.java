@@ -68,10 +68,10 @@ public class ProviderOutputValidator {
         }
         List<String> observations = result.observations() == null ? List.of() : result.observations();
         if (observations.size() > 20 || observations.stream().anyMatch(value -> value == null || value.length() > 500)) {
-            throw invalid("ObservaÃ§Ãµes invÃ¡lidas");
+            throw invalid("Observações inválidas");
         }
         if (result.needsProfessionalGuidance() || result.completion() == null) {
-            throw invalid("A conclusÃ£o automÃ¡tica precisa retornar uma proposta aplicÃ¡vel");
+            throw invalid("A conclusão automática precisa retornar uma proposta aplicável");
         }
         List<AssistantModels.SuggestedDay> newDays = result.completion().newDays() == null
             ? List.of() : result.completion().newDays();
@@ -90,7 +90,7 @@ public class ProviderOutputValidator {
         int itemCount = 0;
         for (AssistantModels.ExistingDayAddition addition : additions) {
             if (addition == null || addition.dayId() == null || !touchedDays.add(addition.dayId()) || !days.containsKey(addition.dayId())) {
-                throw invalid("A proposta indicou um dia existente invÃ¡lido ou repetido");
+                throw invalid("A proposta indicou um dia existente inválido ou repetido");
             }
             AssistantContext.Day day = days.get(addition.dayId());
             List<AssistantModels.SuggestedItem> items = safeItems(addition.items());
@@ -103,24 +103,24 @@ public class ProviderOutputValidator {
         }
         for (AssistantContext.Day day : context.plan().days()) {
             if (day.items().isEmpty() && !touchedDays.contains(day.id())) {
-                throw invalid("Todo dia vazio precisa receber exercÃ­cios na proposta");
+                throw invalid("Todo dia vazio precisa receber exercícios na proposta");
             }
         }
         Set<Integer> positions = new HashSet<>();
         for (AssistantModels.SuggestedDay day : newDays) {
             if (day == null || day.position() == null || day.position() < 1 || day.position() > targetDays
                 || !positions.add(day.position()) || day.name() == null || day.name().isBlank() || day.name().length() > 80) {
-                throw invalid("Novo dia incompleto ou invÃ¡lido");
+                throw invalid("Novo dia incompleto ou inválido");
             }
             List<AssistantModels.SuggestedItem> items = safeItems(day.items());
-            if (items.isEmpty()) throw invalid("Todo novo dia precisa ter exercÃ­cios");
+            if (items.isEmpty()) throw invalid("Todo novo dia precisa ter exercícios");
             validateItems(items, exercises, Set.of(), 1);
             itemCount += items.size();
         }
         for (int position = currentDays + 1; position <= targetDays; position++) {
-            if (!positions.contains(position)) throw invalid("As posiÃ§Ãµes dos novos dias devem ser contÃ­guas");
+            if (!positions.contains(position)) throw invalid("As posições dos novos dias devem ser contíguas");
         }
-        if (itemCount == 0 || itemCount > 60) throw invalid("Quantidade de exercÃ­cios sugeridos invÃ¡lida");
+        if (itemCount == 0 || itemCount > 60) throw invalid("Quantidade de exercícios sugeridos inválida");
         AssistantModels.CompletionProposal completion = new AssistantModels.CompletionProposal(newDays, additions);
         return new TrainingAssistantProvider.CompletionResult(result.reply().trim(), false, observations, completion);
     }
@@ -132,7 +132,7 @@ public class ProviderOutputValidator {
     private void validateItems(List<AssistantModels.SuggestedItem> items,
                                Map<UUID, AssistantContext.Exercise> exercises, Set<UUID> existing,
                                int firstPosition) {
-        if (items.size() > 12) throw invalid("Um dia nÃ£o pode receber mais de 12 exercÃ­cios");
+        if (items.size() > 12) throw invalid("Um dia não pode receber mais de 12 exercícios");
         Set<UUID> exerciseIds = new HashSet<>(existing);
         Set<Integer> positions = new HashSet<>();
         for (int index = 0; index < items.size(); index++) {
@@ -145,7 +145,7 @@ public class ProviderOutputValidator {
             }
             validateSuggestedItem(item, exercises);
             if (item.reason() == null || item.reason().isBlank() || item.reason().length() > 500) {
-                throw invalid("Todo exercÃ­cio sugerido precisa de uma justificativa curta");
+                throw invalid("Todo exercício sugerido precisa de uma justificativa curta");
             }
         }
     }
@@ -153,14 +153,14 @@ public class ProviderOutputValidator {
     private void validateSuggestedItem(AssistantModels.SuggestedItem item,
                                        Map<UUID, AssistantContext.Exercise> exercises) {
         AssistantContext.Exercise exercise = exercises.get(item.exerciseId());
-        if (exercise == null) throw invalid("A sugestÃ£o inventou ou usou um exercÃ­cio inelegÃ­vel");
+        if (exercise == null) throw invalid("A sugestão inventou ou usou um exercício inelegível");
         int count = (item.sets() == null ? 0 : 1) + (item.repetitionMin() == null ? 0 : 1)
             + (item.repetitionMax() == null ? 0 : 1);
-        if (count != 0 && count != 3) throw invalid("SÃ©ries e faixa de repetiÃ§Ãµes devem estar completas");
+        if (count != 0 && count != 3) throw invalid("Séries e faixa de repetições devem estar completas");
         if ("STRENGTH".equals(exercise.kind())) {
-            if (count != 3 || item.durationSeconds() != null) throw invalid("ExercÃ­cio de forÃ§a com parÃ¢metros invÃ¡lidos");
+            if (count != 3 || item.durationSeconds() != null) throw invalid("Exercício de força com parâmetros inválidos");
         } else if (item.durationSeconds() == null && count == 0) {
-            throw invalid("Aquecimento ou alongamento sem duraÃ§Ã£o ou repetiÃ§Ãµes");
+            throw invalid("Aquecimento ou alongamento sem duração ou repetições");
         }
         if (item.sets() != null && (item.sets() < 1 || item.sets() > 10)
             || item.repetitionMin() != null && (item.repetitionMin() < 1 || item.repetitionMin() > 100)
@@ -168,7 +168,7 @@ public class ProviderOutputValidator {
             || item.durationSeconds() != null && (item.durationSeconds() < 5 || item.durationSeconds() > 1800)
             || item.restSeconds() != null && (item.restSeconds() < 0 || item.restSeconds() > 600)
             || item.repetitionMin() != null && item.repetitionMax() != null && item.repetitionMin() > item.repetitionMax()) {
-            throw invalid("ParÃ¢metros fora dos limites tÃ©cnicos");
+            throw invalid("Parâmetros fora dos limites técnicos");
         }
     }
 

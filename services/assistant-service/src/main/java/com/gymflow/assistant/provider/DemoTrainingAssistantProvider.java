@@ -63,8 +63,8 @@ public class DemoTrainingAssistantProvider implements TrainingAssistantProvider 
                 .thenComparing(AssistantContext.Exercise::name).thenComparing(AssistantContext.Exercise::id))
             .toList();
         if (candidates.isEmpty()) {
-            return new CompletionResult("NÃ£o encontrei exercÃ­cios elegÃ­veis para montar o treino.", false,
-                List.of("O catÃ¡logo elegÃ­vel da unidade estÃ¡ vazio."),
+            return new CompletionResult("Não encontrei exercícios elegíveis para montar o treino.", false,
+                List.of("O catálogo elegível da unidade está vazio."),
                 new AssistantModels.CompletionProposal(List.of(), List.of()));
         }
         List<AssistantModels.ExistingDayAddition> additions = new ArrayList<>();
@@ -85,9 +85,9 @@ public class DemoTrainingAssistantProvider implements TrainingAssistantProvider 
             cursor += items.size();
             newDays.add(new AssistantModels.SuggestedDay(position, "Dia " + position, items));
         }
-        return new CompletionResult("Montei a estrutura completa do treino com base no objetivo, na frequÃªncia semanal e no catÃ¡logo da unidade.",
-            false, List.of("Revise os exercÃ­cios e ajuste cargas manualmente antes de ativar o plano.",
-                "A proposta preserva tudo o que jÃ¡ estava no rascunho."),
+        return new CompletionResult("Montei a estrutura completa do treino com base no objetivo, na frequência semanal e no catálogo da unidade.",
+            false, List.of("Revise os exercícios e ajuste cargas manualmente antes de ativar o plano.",
+                "A proposta preserva tudo o que já estava no rascunho."),
             new AssistantModels.CompletionProposal(newDays, additions));
     }
 
@@ -104,7 +104,7 @@ public class DemoTrainingAssistantProvider implements TrainingAssistantProvider 
             result.add(new AssistantModels.SuggestedItem(exercise.id(), firstPosition + result.size(),
                 strength ? 3 : null, strength ? 8 : null, strength ? 12 : null,
                 strength ? null : 60, 60,
-                "ExercÃ­cio elegÃ­vel selecionado para compor uma sessÃ£o equilibrada no modo demo."));
+                "Exercício elegível selecionado para compor uma sessão equilibrada no modo demo."));
         }
         return List.copyOf(result);
     }
