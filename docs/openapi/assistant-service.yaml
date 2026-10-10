@@ -79,8 +79,8 @@ components:
         id: {type: string, format: uuid}
         planId: {type: string, format: uuid}
         basePlanVersion: {type: integer, format: int64, minimum: 0}
-        contextFingerprint: {type: string, minLength: 64, maxLength: 64}
-        status: {type: string, enum: [AVAILABLE, EXPIRED]}
+        contextFingerprint: {type: string, minLength: 64, maxLength: 64, description: Audit hash of the bounded context used for generation; plan version and live eligibility remain authoritative at application time.}
+        status: {type: string, enum: [AVAILABLE, EXPIRED], description: Temporal validity in assistant-service; consumption is enforced independently by workout-service.}
         source: {type: string, enum: [DEMO, GEMINI]}
         kind: {type: string, enum: [ITEM_CHANGES, WORKOUT_COMPLETION]}
         explanation: {type: string, maxLength: 2000}

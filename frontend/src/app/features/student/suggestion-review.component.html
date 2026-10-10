@@ -1,0 +1,56 @@
+<section class="proposal-card" aria-labelledby="proposal-title">
+  <div class="proposal-label">
+    <span aria-hidden="true">✦</span>
+    <strong id="proposal-title">{{ suggestion.source === 'DEMO' ? 'Proposta em modo demo' : 'Proposta do Gemini' }}</strong>
+  </div>
+  <p>{{ suggestion.explanation }}</p>
+
+  @for (observation of suggestion.observations; track observation) {
+    <div class="proposal-observation">{{ observation }}</div>
+  }
+
+  @if (suggestion.completion; as completion) {
+    <div class="proposal-details">
+      @for (addition of completion.existingDayAdditions; track addition.dayId) {
+        <section class="proposal-day">
+          <div class="proposal-day-heading"><span>Complemento</span><strong>{{ dayName(addition.dayId) }}</strong></div>
+          @for (item of addition.items; track item.exerciseId + '-' + item.position) {
+            <div class="proposal-exercise">
+              <app-exercise-media [exerciseId]="item.exerciseId" [exerciseName]="exerciseName(item.exerciseId)" [compact]="true" />
+              <div><strong>{{ exerciseName(item.exerciseId) }}</strong><span>{{ itemSummary(item) }}</span><small>{{ item.reason }}</small></div>
+            </div>
+          }
+        </section>
+      }
+      @for (day of completion.newDays; track day.position) {
+        <section class="proposal-day">
+          <div class="proposal-day-heading"><span>Novo dia {{ day.position }}</span><strong>{{ day.name }}</strong></div>
+          @for (item of day.items; track item.exerciseId + '-' + item.position) {
+            <div class="proposal-exercise">
+              <app-exercise-media [exerciseId]="item.exerciseId" [exerciseName]="exerciseName(item.exerciseId)" [compact]="true" />
+              <div><strong>{{ exerciseName(item.exerciseId) }}</strong><span>{{ itemSummary(item) }}</span><small>{{ item.reason }}</small></div>
+            </div>
+          }
+        </section>
+      }
+    </div>
+  }
+
+  @if (suggestion.kind === 'ITEM_CHANGES') {
+    <div class="proposal-details">
+      @for (change of suggestion.changes; track change.dayId + '-' + change.position + '-' + change.operation) {
+        <div class="proposal-change">
+          <span>{{ operationLabel(change.operation) }}</span>
+          <strong>{{ exerciseName(change.exerciseId) }}</strong>
+          <small>{{ change.reason }}</small>
+        </div>
+      }
+    </div>
+  }
+</section>
+
+<p class="proposal-confirmation">Revise cada item acima. A aplicação mantém o plano como rascunho para você editar antes da ativação.</p>
+<div class="drawer-actions">
+  <button type="button" class="button ghost" (click)="discard.emit()" [disabled]="applying">Descartar</button>
+  <button type="button" class="button" (click)="apply.emit()" [disabled]="applying">{{ applying ? 'Aplicando…' : 'Aplicar ao rascunho' }}</button>
+</div>

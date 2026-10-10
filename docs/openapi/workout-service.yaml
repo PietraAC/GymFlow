@@ -22,7 +22,7 @@ paths:
     post:
       summary: Creates a draft plan
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreatePlan'}}}}
-      responses: {'201': {description: Created draft, content: {application/json: {schema: {$ref: '#/components/schemas/Plan'}}}}, '400': {$ref: '#/components/responses/Problem'}}
+      responses: {'201': {description: Created draft after unit validation, content: {application/json: {schema: {$ref: '#/components/schemas/Plan'}}}}, '400': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
   /api/v1/me/plans/{planId}:
     parameters: [{name: planId, in: path, required: true, schema: {type: string, format: uuid}}]
     get:
@@ -38,6 +38,12 @@ paths:
       parameters: [{name: planId, in: path, required: true, schema: {type: string, format: uuid}}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Transition'}}}}
       responses: {'200': {description: Active plan, content: {application/json: {schema: {$ref: '#/components/schemas/Plan'}}}}, '409': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
+  /api/v1/me/plans/{planId}/revalidate:
+    post:
+      summary: Revalidates current eligibility for an active plan without changing its lifecycle state
+      parameters: [{name: planId, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Transition'}}}}
+      responses: {'200': {description: Revalidated active plan, content: {application/json: {schema: {$ref: '#/components/schemas/Plan'}}}}, '409': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
   /api/v1/me/plans/{planId}/archive:
     post:
       summary: Archives a plan
@@ -71,7 +77,7 @@ components:
       type: object
       required: [unitId, name, goal, targetDaysPerWeek]
       properties:
-        unitId: {type: string, format: uuid}
+        unitId: {type: string, format: uuid, description: Unit selected for the new plan and immutable afterward.}
         name: {type: string, maxLength: 120}
         goal: {type: string, enum: [HYPERTROPHY, STRENGTH, GENERAL_FITNESS, ENDURANCE]}
         targetDaysPerWeek: {type: integer, minimum: 1, maximum: 7}
@@ -80,7 +86,7 @@ components:
       required: [version, unitId, name, goal, targetDaysPerWeek, days]
       properties:
         version: {type: integer, format: int64, minimum: 0}
-        unitId: {type: string, format: uuid}
+        unitId: {type: string, format: uuid, description: Must match the immutable unit selected when the plan was created.}
         name: {type: string, maxLength: 120}
         goal: {type: string, enum: [HYPERTROPHY, STRENGTH, GENERAL_FITNESS, ENDURANCE]}
         targetDaysPerWeek: {type: integer, minimum: 1, maximum: 7}
@@ -90,20 +96,20 @@ components:
       required: [position, name, items]
       properties:
         id: {type: [string, 'null'], format: uuid}
-        position: {type: integer, minimum: 1, maximum: 7}
+        position: {type: integer, minimum: 1, maximum: 7, description: One-based and contiguous within the plan.}
         name: {type: string, maxLength: 80}
-        items: {type: array, items: {$ref: '#/components/schemas/WorkoutItem'}}
+        items: {type: array, description: Exercise IDs must be unique within a day., items: {$ref: '#/components/schemas/WorkoutItem'}}
     WorkoutItem:
       type: object
       required: [exerciseId, position]
       properties:
         id: {type: [string, 'null'], format: uuid}
         exerciseId: {type: string, format: uuid}
-        position: {type: integer, minimum: 1}
+        position: {type: integer, minimum: 1, description: One-based and contiguous within the day.}
         sets: {type: [integer, 'null'], minimum: 1, maximum: 10}
         repetitionMin: {type: [integer, 'null'], minimum: 1, maximum: 100}
         repetitionMax: {type: [integer, 'null'], minimum: 1, maximum: 100}
-        durationSeconds: {type: [integer, 'null'], minimum: 5, maximum: 1800}
+        durationSeconds: {type: [integer, 'null'], minimum: 5, maximum: 1800, description: Mutually exclusive with a complete sets/repetition prescription for non-strength exercises.}
         restSeconds: {type: [integer, 'null'], minimum: 0, maximum: 600}
         optionalLoadKg: {type: [number, 'null'], minimum: 0}
         notes: {type: [string, 'null'], maxLength: 500}

@@ -17,10 +17,9 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
         throws ServletException, IOException {
-        String correlationId = request.getHeader(HEADER);
-        if (correlationId == null || correlationId.isBlank() || correlationId.length() > 100) {
-            correlationId = UUID.randomUUID().toString();
-        }
+        String candidate = request.getHeader(HEADER);
+        String correlationId = candidate != null && candidate.matches("[A-Za-z0-9._-]{1,100}")
+            ? candidate : UUID.randomUUID().toString();
         response.setHeader(HEADER, correlationId);
         try (MDC.MDCCloseable ignored = MDC.putCloseable("correlationId", correlationId)) {
             chain.doFilter(request, response);

@@ -45,6 +45,28 @@ class WorkoutPlanValidatorTest {
             .isInstanceOf(InvalidRequestException.class).hasMessageContaining("posições dos exercícios");
     }
 
+    @Test
+    void rejectsPositionGapsAndDuplicateExercisesWithinADay() {
+        UUID exerciseId = UUID.randomUUID();
+        PlanModels.ItemRequest first = new PlanModels.ItemRequest(null, exerciseId, 1, 3, 8, 12, null, 60, null, null);
+        PlanModels.ItemRequest duplicate = new PlanModels.ItemRequest(null, exerciseId, 2, 3, 8, 12, null, 60, null, null);
+        assertThatThrownBy(() -> validator.validateStructure(
+            List.of(new PlanModels.DayRequest(null, 1, "Dia", List.of(first, duplicate))), false))
+            .isInstanceOf(InvalidRequestException.class).hasMessageContaining("mais de uma vez");
+
+        PlanModels.DayRequest gap = new PlanModels.DayRequest(null, 2, "Dia", List.of(first));
+        assertThatThrownBy(() -> validator.validateStructure(List.of(gap), false))
+            .isInstanceOf(InvalidRequestException.class).hasMessageContaining("contíguas");
+    }
+
+    @Test
+    void nonStrengthPrescriptionUsesDurationOrRepetitionsButNotBoth() {
+        assertThatThrownBy(() -> validator.validateItem(item(3, 8, 12, 60, null), ExerciseKind.WARMUP))
+            .isInstanceOf(InvalidRequestException.class).hasMessageContaining("mas não ambos");
+        assertThatCode(() -> validator.validateItem(item(3, 8, 12, null, null), ExerciseKind.STRETCHING))
+            .doesNotThrowAnyException();
+    }
+
     private PlanModels.ItemRequest item(Integer sets, Integer min, Integer max, Integer duration, BigDecimal load) {
         return new PlanModels.ItemRequest(null, UUID.randomUUID(), 1, sets, min, max, duration, 60, load, null);
     }

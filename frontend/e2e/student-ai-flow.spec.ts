@@ -46,6 +46,7 @@ test('student creates a draft, reviews the AI proposal and applies it', async ({
   await expect(page.getByText(expectedProvider, { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText('Montei a estrutura completa do treino com base no objetivo, na frequência semanal e no catálogo da unidade.', { exact: true })).toBeVisible();
   await expect(page.getByText('Revise os exercícios e ajuste cargas manualmente antes de ativar o plano.', { exact: true })).toBeVisible();
+  await expect(page.locator('.proposal-exercise').first()).toBeVisible();
   if (captureDocs) {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.screenshot({ path: '../docs/assets/gymflow-ai-workout-completion.png' });

@@ -15,10 +15,14 @@ import org.springframework.stereotype.Component;
 public class WorkoutPlanValidator {
     public void validateStructure(List<PlanModels.DayRequest> days, boolean activation) {
         if (activation && days.isEmpty()) throw new InvalidRequestException("Um plano ativo deve ter pelo menos um dia");
-        requireUnique(days.stream().map(PlanModels.DayRequest::position).toList(), "As posições dos dias devem ser únicas");
+        requireContiguous(days.stream().map(PlanModels.DayRequest::position).toList(),
+            "As posições dos dias devem ser contíguas e começar em 1");
         for (PlanModels.DayRequest day : days) {
             if (activation && day.items().isEmpty()) throw new InvalidRequestException("Todo dia de um plano ativo deve ter exercícios");
-            requireUnique(day.items().stream().map(PlanModels.ItemRequest::position).toList(), "As posições dos exercícios de cada dia devem ser únicas");
+            requireContiguous(day.items().stream().map(PlanModels.ItemRequest::position).toList(),
+                "As posições dos exercícios devem ser contíguas e começar em 1");
+            requireUnique(day.items().stream().map(PlanModels.ItemRequest::exerciseId).toList(),
+                "Um exercício não pode aparecer mais de uma vez no mesmo dia");
             for (PlanModels.ItemRequest item : day.items()) {
                 if (item.repetitionMin() != null && item.repetitionMax() != null && item.repetitionMin() > item.repetitionMax()) {
                     throw new InvalidRequestException("A repetição mínima não pode superar a máxima");
@@ -44,8 +48,9 @@ public class WorkoutPlanValidator {
         if (kind == ExerciseKind.STRENGTH && (!repetitionsComplete || item.durationSeconds() != null)) {
             throw new InvalidRequestException("Exercícios de força exigem séries/repetições e não usam duração");
         }
-        if (kind != ExerciseKind.STRENGTH && item.durationSeconds() == null && !repetitionsComplete) {
-            throw new InvalidRequestException("Aquecimento e alongamento exigem duração ou séries/repetições completas");
+        if (kind != ExerciseKind.STRENGTH && (item.durationSeconds() == null) == !repetitionsComplete) {
+            throw new InvalidRequestException(
+                "Aquecimento e alongamento exigem duração ou séries/repetições completas, mas não ambos");
         }
         if (!repetitionsComplete && (item.sets() != null || item.repetitionMin() != null || item.repetitionMax() != null)) {
             throw new InvalidRequestException("Séries e faixa de repetições devem ser informadas juntas");
@@ -55,7 +60,14 @@ public class WorkoutPlanValidator {
         }
     }
 
-    private void requireUnique(List<Integer> positions, String message) {
-        if (new HashSet<>(positions).size() != positions.size()) throw new InvalidRequestException(message);
+    private <T> void requireUnique(List<T> values, String message) {
+        if (new HashSet<>(values).size() != values.size()) throw new InvalidRequestException(message);
+    }
+
+    private void requireContiguous(List<Integer> positions, String message) {
+        requireUnique(positions, message);
+        for (int index = 0; index < positions.size(); index++) {
+            if (positions.get(index) != index + 1) throw new InvalidRequestException(message);
+        }
     }
 }

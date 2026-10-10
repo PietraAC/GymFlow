@@ -23,6 +23,7 @@ export class ApiService {
   plan(id: string) { return this.http.get<WorkoutPlan>(`/workout-api/api/v1/me/plans/${id}`); }
   savePlan(plan: WorkoutPlan) { return this.http.put<WorkoutPlan>(`/workout-api/api/v1/me/plans/${plan.id}`, { version: plan.version, unitId: plan.unitId, name: plan.name, goal: plan.goal, targetDaysPerWeek: plan.targetDaysPerWeek, days: plan.days }); }
   activatePlan(plan: WorkoutPlan) { return this.http.post<WorkoutPlan>(`/workout-api/api/v1/me/plans/${plan.id}/activate`, { version: plan.version }); }
+  revalidatePlan(plan: WorkoutPlan) { return this.http.post<WorkoutPlan>(`/workout-api/api/v1/me/plans/${plan.id}/revalidate`, { version: plan.version }); }
   archivePlan(plan: WorkoutPlan) { return this.http.post<WorkoutPlan>(`/workout-api/api/v1/me/plans/${plan.id}/archive`, { version: plan.version }); }
   generatePlanSuggestion(planId: string) { return this.http.post<AssistantSuggestion>(`/assistant-api/api/v1/plans/${planId}/suggestions`, {}); }
   applySuggestion(plan: WorkoutPlan, suggestionId: string, idempotencyKey: string) {

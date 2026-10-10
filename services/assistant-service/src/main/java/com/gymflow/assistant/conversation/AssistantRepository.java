@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class AssistantRepository {
@@ -92,6 +93,32 @@ public class AssistantRepository {
             now, expiresAt);
     }
 
+    @Transactional
+    public AssistantModels.SuggestionResponse saveGeneratedCompletion(String subject, UUID planId, long planVersion,
+                                                                        String fingerprint,
+                                                                        AssistantModels.Source source,
+                                                                        String explanation,
+                                                                        List<String> observations,
+                                                                        AssistantModels.CompletionProposal completion,
+                                                                        Instant expiresAt) {
+        AssistantModels.ConversationResponse conversation = createConversation(subject, planId);
+        return saveCompletionSuggestion(conversation.id(), subject, planId, planVersion, fingerprint, source,
+            explanation, observations, completion, expiresAt);
+    }
+
+    @Transactional
+    public SavedTurn saveTurn(UUID conversationId, String subject, UUID planId, long planVersion,
+                              String fingerprint, AssistantModels.Source source, String userText,
+                              String assistantText, List<String> observations,
+                              List<AssistantModels.SuggestionChange> changes, Instant expiresAt) {
+        addMessage(conversationId, "USER", userText);
+        AssistantModels.MessageResponse assistant = addMessage(conversationId, "ASSISTANT", assistantText);
+        AssistantModels.SuggestionResponse suggestion = changes.isEmpty() ? null : saveSuggestion(
+            conversationId, subject, planId, planVersion, fingerprint, source, assistantText,
+            observations, changes, expiresAt);
+        return new SavedTurn(assistant, suggestion);
+    }
+
     public AssistantModels.SuggestionResponse ownedSuggestion(String subject, UUID id) {
         return jdbc.query("SELECT * FROM suggestions WHERE id=? AND identity_subject=?", this::suggestion, id, subject)
             .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Sugestão não encontrada"));
@@ -120,4 +147,7 @@ public class AssistantRepository {
         try { return mapper.readValue(value, type); }
         catch (JsonProcessingException exception) { throw new IllegalStateException("Sugestão persistida inválida", exception); }
     }
+
+    public record SavedTurn(AssistantModels.MessageResponse assistant,
+                            AssistantModels.SuggestionResponse suggestion) {}
 }

@@ -159,8 +159,8 @@ public class ProviderOutputValidator {
         if (count != 0 && count != 3) throw invalid("Séries e faixa de repetições devem estar completas");
         if ("STRENGTH".equals(exercise.kind())) {
             if (count != 3 || item.durationSeconds() != null) throw invalid("Exercício de força com parâmetros inválidos");
-        } else if (item.durationSeconds() == null && count == 0) {
-            throw invalid("Aquecimento ou alongamento sem duração ou repetições");
+        } else if ((item.durationSeconds() == null) == (count == 0)) {
+            throw invalid("Aquecimento e alongamento exigem duração ou repetições completas, mas não ambos");
         }
         if (item.sets() != null && (item.sets() < 1 || item.sets() > 10)
             || item.repetitionMin() != null && (item.repetitionMin() < 1 || item.repetitionMin() > 100)
@@ -179,8 +179,8 @@ public class ProviderOutputValidator {
         if ("STRENGTH".equals(exercise.kind())) {
             if (change.sets() == null || change.repetitionMin() == null || change.repetitionMax() == null
                 || change.durationSeconds() != null) throw invalid("Exercício de força com parâmetros inválidos");
-        } else if (change.durationSeconds() == null && change.sets() == null) {
-            throw invalid("Aquecimento ou alongamento sem duração ou repetições");
+        } else if ((change.durationSeconds() == null) == (change.sets() == null)) {
+            throw invalid("Aquecimento e alongamento exigem duração ou repetições completas, mas não ambos");
         }
         if (change.sets() != null && (change.sets() < 1 || change.sets() > 10)
             || change.repetitionMin() != null && (change.repetitionMin() < 1 || change.repetitionMin() > 100)

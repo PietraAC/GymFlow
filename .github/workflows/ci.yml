@@ -65,6 +65,11 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Start complete environment
         run: bash scripts/start-ci-environment.sh
+      - name: Verify maintained OpenAPI paths
+        run: |
+          python3 scripts/verify-openapi-paths.py docs/openapi/gym-service.yaml http://localhost:8081/v3/api-docs
+          python3 scripts/verify-openapi-paths.py docs/openapi/workout-service.yaml http://localhost:8082/v3/api-docs
+          python3 scripts/verify-openapi-paths.py docs/openapi/assistant-service.yaml http://localhost:8083/v3/api-docs
       - name: Verify browser flow
         working-directory: frontend
         run: npm run e2e

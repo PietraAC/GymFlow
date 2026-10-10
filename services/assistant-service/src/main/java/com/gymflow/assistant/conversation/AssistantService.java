@@ -56,15 +56,14 @@ public class AssistantService {
         return limiter.execute(subject, () -> {
             Timer.Sample sample = Timer.start(metrics);
             String source = "unselected";
-            AssistantContext context = contexts.build(planId, token, List.of());
             try {
+                AssistantContext context = contexts.build(planId, token, List.of());
                 TrainingAssistantProvider provider = providers.selected();
                 source = provider.source().name().toLowerCase();
                 TrainingAssistantProvider.CompletionResult result = validator.validateCompletion(
                     provider.complete(context), context);
-                AssistantModels.ConversationResponse conversation = repository.createConversation(subject, planId);
-                AssistantModels.SuggestionResponse suggestion = repository.saveCompletionSuggestion(
-                    conversation.id(), subject, planId, context.plan().version(), context.fingerprint(), provider.source(),
+                AssistantModels.SuggestionResponse suggestion = repository.saveGeneratedCompletion(
+                    subject, planId, context.plan().version(), context.fingerprint(), provider.source(),
                     result.reply(), result.observations(), result.completion(), Instant.now().plus(suggestionTtl));
                 int changeCount = result.completion().newDays().stream().mapToInt(day -> day.items().size()).sum()
                     + result.completion().existingDayAdditions().stream().mapToInt(day -> day.items().size()).sum();
@@ -89,15 +88,13 @@ public class AssistantService {
         List<AssistantModels.MessageResponse> previous = repository.messages(conversationId);
         List<AssistantModels.MessageResponse> history = previous.stream()
             .skip(Math.max(0, previous.size() - historyLimit)).toList();
-        repository.addMessage(conversationId, "USER", text);
         AssistantContext context = contexts.build(conversation.planId(), token, history);
         TrainingAssistantProvider provider = providers.selected();
         TrainingAssistantProvider.ProviderResult result = validator.validate(provider.generate(context, text), context);
-        AssistantModels.MessageResponse assistantMessage = repository.addMessage(conversationId, "ASSISTANT", result.reply());
-        AssistantModels.SuggestionResponse suggestion = result.changes().isEmpty() ? null : repository.saveSuggestion(
-            conversationId, subject, conversation.planId(), context.plan().version(), context.fingerprint(), provider.source(),
-            result.reply(), result.observations(), result.changes(), Instant.now().plus(suggestionTtl));
-        return new AssistantModels.AssistantTurnResponse(assistantMessage, result.needsProfessionalGuidance(),
-            result.observations(), suggestion);
+        AssistantRepository.SavedTurn saved = repository.saveTurn(conversationId, subject, conversation.planId(),
+            context.plan().version(), context.fingerprint(), provider.source(), text, result.reply(),
+            result.observations(), result.changes(), Instant.now().plus(suggestionTtl));
+        return new AssistantModels.AssistantTurnResponse(saved.assistant(), result.needsProfessionalGuidance(),
+            result.observations(), saved.suggestion());
     }
 }

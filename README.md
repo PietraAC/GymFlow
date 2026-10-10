@@ -10,7 +10,7 @@
 
 GymFlow is a portfolio project for building weekly workout plans around the equipment that is actually available at a selected gym branch.
 
-Gym administrators manage gyms, branches, and equipment inventory. Students create plans from the eligible exercise catalog, organize training days, and may ask an AI assistant to propose the missing parts of a week. Every proposal is shown for review before it can be applied, and the workout service independently validates ownership, version, structure, and current eligibility.
+Gym administrators manage gyms, branches, and equipment inventory. Students create plans from the eligible exercise catalog, organize training days, and may ask an AI assistant to propose the missing parts of a week. Every proposal is shown item by item for review before it can be applied, and the workout service independently validates ownership, version, structure, and current eligibility.
 
 > GymFlow is educational software, not medical guidance. The catalog uses neutral exercise descriptions and does not diagnose conditions, prescribe treatment, or define loads for the student.
 

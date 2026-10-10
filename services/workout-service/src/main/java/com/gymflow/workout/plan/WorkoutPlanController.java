@@ -26,31 +26,36 @@ public class WorkoutPlanController {
     @GetMapping public List<PlanModels.PlanSummary> list(@AuthenticationPrincipal Jwt jwt) { return service.list(jwt.getSubject()); }
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
     public PlanModels.PlanResponse create(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody PlanModels.CreatePlanRequest request) {
-        return service.create(jwt.getSubject(), request);
+        return service.create(jwt.getSubject(), request, jwt.getTokenValue());
     }
-    @GetMapping("/{id}")
-    public PlanModels.PlanResponse get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
-        return service.get(jwt.getSubject(), id, jwt.getTokenValue());
+    @GetMapping("/{planId}")
+    public PlanModels.PlanResponse get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID planId) {
+        return service.get(jwt.getSubject(), planId, jwt.getTokenValue());
     }
-    @PutMapping("/{id}")
-    public PlanModels.PlanResponse update(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+    @PutMapping("/{planId}")
+    public PlanModels.PlanResponse update(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID planId,
                                           @Valid @RequestBody PlanModels.UpdatePlanRequest request) {
-        return service.update(jwt.getSubject(), id, request, jwt.getTokenValue());
+        return service.update(jwt.getSubject(), planId, request, jwt.getTokenValue());
     }
-    @PostMapping("/{id}/activate")
-    public PlanModels.PlanResponse activate(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+    @PostMapping("/{planId}/activate")
+    public PlanModels.PlanResponse activate(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID planId,
                                             @Valid @RequestBody PlanModels.TransitionRequest request) {
-        return service.activate(jwt.getSubject(), id, request.version(), jwt.getTokenValue());
+        return service.activate(jwt.getSubject(), planId, request.version(), jwt.getTokenValue());
     }
-    @PostMapping("/{id}/archive")
-    public PlanModels.PlanResponse archive(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+    @PostMapping("/{planId}/revalidate")
+    public PlanModels.PlanResponse revalidate(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID planId,
+                                               @Valid @RequestBody PlanModels.TransitionRequest request) {
+        return service.revalidate(jwt.getSubject(), planId, request.version(), jwt.getTokenValue());
+    }
+    @PostMapping("/{planId}/archive")
+    public PlanModels.PlanResponse archive(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID planId,
                                            @Valid @RequestBody PlanModels.TransitionRequest request) {
-        return service.archive(jwt.getSubject(), id, request.version());
+        return service.archive(jwt.getSubject(), planId, request.version());
     }
-    @PostMapping("/{id}/apply-suggestion")
-    public PlanModels.PlanResponse applySuggestion(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+    @PostMapping("/{planId}/apply-suggestion")
+    public PlanModels.PlanResponse applySuggestion(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID planId,
                                                    @RequestHeader("Idempotency-Key") String idempotencyKey,
                                                    @Valid @RequestBody PlanModels.ApplySuggestionRequest request) {
-        return service.applySuggestion(jwt.getSubject(), id, request, idempotencyKey, jwt.getTokenValue());
+        return service.applySuggestion(jwt.getSubject(), planId, request, idempotencyKey, jwt.getTokenValue());
     }
 }

@@ -1,14 +1,35 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormArray, FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { switchMap, tap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AssistantSuggestion, Exercise, ExerciseKind, Goal, WorkoutDay, WorkoutPlan } from '../../core/api.models';
 import { errorMessage } from '../../core/error-message';
 import { ExerciseMediaComponent } from '../../shared/exercise-media.component';
+import { SuggestionReviewComponent } from './suggestion-review.component';
+
+type ItemForm = FormGroup<{
+  id: FormControl<string | null>;
+  exerciseId: FormControl<string | null>;
+  position: FormControl<number | null>;
+  sets: FormControl<number | null>;
+  repetitionMin: FormControl<number | null>;
+  repetitionMax: FormControl<number | null>;
+  durationSeconds: FormControl<number | null>;
+  restSeconds: FormControl<number | null>;
+  optionalLoadKg: FormControl<number | null>;
+  notes: FormControl<string | null>;
+}>;
+
+type DayForm = FormGroup<{
+  id: FormControl<string | null>;
+  position: FormControl<number | null>;
+  name: FormControl<string | null>;
+  items: FormArray<ItemForm>;
+}>;
 
 @Component({
-  imports: [ReactiveFormsModule, RouterLink, ExerciseMediaComponent],
+  imports: [ReactiveFormsModule, RouterLink, ExerciseMediaComponent, SuggestionReviewComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-shell editor-page">
@@ -68,14 +89,14 @@ import { ExerciseMediaComponent } from '../../shared/exercise-media.component';
                     @for (item of items(dayIndex).controls; track item; let itemIndex = $index) {
                       <article class="exercise-card" [formGroupName]="itemIndex" [class.expanded]="isItemExpanded(dayIndex, itemIndex)">
                         <button type="button" class="exercise-row" (click)="toggleItem(dayIndex, itemIndex)" [attr.aria-expanded]="isItemExpanded(dayIndex, itemIndex)">
-                          <app-exercise-media [exerciseId]="item.get('exerciseId')?.value" [exerciseName]="exerciseName(item)" [compact]="true" />
+                          <app-exercise-media [exerciseId]="item.controls.exerciseId.value ?? ''" [exerciseName]="exerciseName(item)" [compact]="true" />
                           <span class="exercise-copy"><strong>{{ exerciseName(item) }}</strong><small>{{ exerciseSummary(item) }}</small></span>
                           <span class="exercise-kind">{{ kindLabel(kind(item) || 'STRENGTH') }}</span>
                           <span class="chevron" [class.open]="isItemExpanded(dayIndex, itemIndex)">⌄</span>
                         </button>
                         @if (isItemExpanded(dayIndex, itemIndex)) {
                           <div class="exercise-details">
-                            <app-exercise-media [exerciseId]="item.get('exerciseId')?.value" [exerciseName]="exerciseName(item)" />
+                            <app-exercise-media [exerciseId]="item.controls.exerciseId.value ?? ''" [exerciseName]="exerciseName(item)" />
                             <div class="exercise-fields">
                               <label>Exercício<select formControlName="exerciseId" (change)="exerciseChanged(item)"><option value="">Selecione</option>@for (exercise of filteredExercises(); track exercise.id) { <option [value]="exercise.id">{{ exercise.name }} · {{ kindLabel(exercise.kind) }}</option> }</select></label>
                               <div class="field-grid dense-fields">
@@ -120,8 +141,7 @@ import { ExerciseMediaComponent } from '../../shared/exercise-media.component';
         <p class="drawer-intro">A IA considera seu objetivo, perfil e somente os exercícios disponíveis nesta unidade.</p>
         <div class="completion-status"><div class="progress-ring">{{ days.length }}/{{ targetDays() }}</div><div><strong>Progresso da semana</strong><span>{{ days.length ? 'Seu rascunho atual será preservado.' : 'A semana pode ser criada desde o primeiro dia.' }}</span></div></div>
         @if (pendingSuggestion(); as suggestion) {
-          <div class="proposal-card"><div class="proposal-label"><span>✦</span><strong>{{ suggestion.source === 'DEMO' ? 'Proposta em modo demo' : 'Proposta do Gemini' }}</strong></div><p>{{ suggestion.explanation }}</p>@for (observation of suggestion.observations; track observation) { <div class="proposal-observation">{{ observation }}</div> }<div class="proposal-summary"><span>{{ suggestion.completion?.newDays?.length || 0 }} novo(s) dia(s)</span><span>{{ proposedExerciseCount(suggestion) }} exercício(s) sugeridos</span></div></div>
-          <div class="drawer-actions"><button type="button" class="button ghost" (click)="pendingSuggestion.set(null)">Descartar</button><button type="button" class="button" (click)="applyAiSuggestion()" [disabled]="assistantLoading()">{{ assistantLoading() ? 'Aplicando…' : 'Aplicar ao rascunho' }}</button></div>
+          <app-suggestion-review [suggestion]="suggestion" [exercises]="exercises()" [currentDays]="plan()?.days ?? []" [applying]="assistantLoading()" (discard)="discardAiSuggestion()" (apply)="applyAiSuggestion()" />
         } @else {
           <div class="assistant-principles"><div><span>✓</span><p><strong>Elegível para a unidade</strong><small>Nenhum exercício fora do inventário.</small></p></div><div><span>✓</span><p><strong>Você revisa antes</strong><small>A proposta não altera o plano automaticamente.</small></p></div><div><span>✓</span><p><strong>Sem carga prescrita</strong><small>A IA não define peso em quilogramas.</small></p></div></div>
           <button type="button" class="button full-width" (click)="generateAiSuggestion()" [disabled]="assistantLoading() || form.invalid">{{ assistantLoading() ? 'Preparando proposta…' : days.length ? 'Gerar complemento' : 'Gerar plano inicial' }}</button>
@@ -135,6 +155,7 @@ export class PlanEditorComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder);
+  private loadedExerciseUnitId = '';
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly plan = signal<WorkoutPlan | null>(null);
@@ -145,6 +166,7 @@ export class PlanEditorComponent {
   readonly assistantOpen = signal(false);
   readonly assistantLoading = signal(false);
   readonly pendingSuggestion = signal<AssistantSuggestion | null>(null);
+  readonly pendingSuggestionKey = signal<string | null>(null);
   readonly aiResult = signal<{source:'DEMO'|'GEMINI';days:number;exercises:number} | null>(null);
   readonly expandedDays = signal<Set<number>>(new Set());
   readonly expandedItems = signal<Set<string>>(new Set());
@@ -157,9 +179,9 @@ export class PlanEditorComponent {
     const query = this.catalogSearch().trim().toLocaleLowerCase('pt-BR');
     return this.filteredExercises().filter(exercise => !query || `${exercise.name} ${exercise.primaryMuscleGroups.join(' ')}`.toLocaleLowerCase('pt-BR').includes(query));
   });
-  readonly form = this.fb.group({ name:['',[Validators.required,Validators.maxLength(120)]], unitId:['',Validators.required], goal:['GENERAL_FITNESS' as Goal,Validators.required], targetDaysPerWeek:[3,[Validators.required,Validators.min(1),Validators.max(7)]], days:this.fb.array<FormGroup>([]) });
+  readonly form = this.fb.group({ name:['',[Validators.required,Validators.maxLength(120)]], unitId:['',Validators.required], goal:['GENERAL_FITNESS' as Goal,Validators.required], targetDaysPerWeek:[3,[Validators.required,Validators.min(1),Validators.max(7)]], days:this.fb.array<DayForm>([]) });
 
-  get days(): FormArray<FormGroup> { return this.form.controls.days; }
+  get days(): FormArray<DayForm> { return this.form.controls.days; }
 
   constructor() {
     const id = this.route.snapshot.paramMap.get('id');
@@ -167,20 +189,19 @@ export class PlanEditorComponent {
     this.api.plan(id).subscribe({ next: plan => this.load(plan), error: error => { this.loading.set(false); this.show(errorMessage(error), true); } });
   }
 
-  items(dayIndex: number): FormArray<FormGroup> { return this.days.at(dayIndex).get('items') as FormArray<FormGroup>; }
+  items(dayIndex: number): FormArray<ItemForm> { return this.days.at(dayIndex).controls.items; }
   targetDays(): number { return Number(this.form.controls.targetDaysPerWeek.value ?? 3); }
   addDay(): void { if (this.days.length >= this.targetDays()) return; this.days.push(this.dayGroup({ position:this.days.length + 1, name:`Dia ${this.days.length + 1}`, items:[] })); this.expandedDays.set(new Set([this.days.length - 1])); }
   removeDay(index: number): void { this.days.removeAt(index); this.normalize(); this.expandedDays.set(new Set(this.days.length ? [Math.max(0, index - 1)] : [])); }
   moveDay(index: number, delta: number): void { const target = index + delta; if (target < 0 || target >= this.days.length) return; const control = this.days.at(index); this.days.removeAt(index); this.days.insert(target, control); this.normalize(); this.expandedDays.set(new Set([target])); }
-  addItem(dayIndex: number): void { const exercise = this.filteredExercises()[0]; if (exercise) this.addExercise(dayIndex, exercise, false); }
   addExercise(dayIndex: number, exercise: Exercise, close = true): void { const array = this.items(dayIndex); array.push(this.itemGroup({ exerciseId:exercise.id, position:array.length + 1, sets:exercise.kind === 'STRENGTH' ? 3 : null, repetitionMin:exercise.kind === 'STRENGTH' ? 8 : null, repetitionMax:exercise.kind === 'STRENGTH' ? 12 : null, durationSeconds:exercise.kind === 'STRENGTH' ? null : 60, restSeconds:60, optionalLoadKg:null, notes:null })); this.expandedItems.set(new Set([`${dayIndex}-${array.length - 1}`])); if (close) this.closeCatalog(); }
   removeItem(dayIndex: number, itemIndex: number): void { this.items(dayIndex).removeAt(itemIndex); this.normalize(); this.expandedItems.set(new Set()); }
   moveItem(dayIndex: number, index: number, delta: number): void { const array = this.items(dayIndex), target = index + delta; if (target < 0 || target >= array.length) return; const control = array.at(index); array.removeAt(index); array.insert(target, control); this.normalize(); this.expandedItems.set(new Set([`${dayIndex}-${target}`])); }
-  kind(group: FormGroup): ExerciseKind | undefined { return this.exercises().find(exercise => exercise.id === group.get('exerciseId')?.value)?.kind; }
-  exerciseName(group: FormGroup): string { return this.exercises().find(exercise => exercise.id === group.get('exerciseId')?.value)?.name ?? 'Exercício'; }
+  kind(group: ItemForm): ExerciseKind | undefined { return this.exercises().find(exercise => exercise.id === group.controls.exerciseId.value)?.kind; }
+  exerciseName(group: ItemForm): string { return this.exercises().find(exercise => exercise.id === group.controls.exerciseId.value)?.name ?? 'Exercício'; }
   kindLabel(kind: ExerciseKind): string { return { STRENGTH:'Força', WARMUP:'Aquecimento', STRETCHING:'Alongamento' }[kind]; }
-  exerciseSummary(group: FormGroup): string { if (this.kind(group) === 'STRENGTH') return `${group.get('sets')?.value ?? '—'} séries · ${group.get('repetitionMin')?.value ?? '—'}–${group.get('repetitionMax')?.value ?? '—'} repetições · ${group.get('restSeconds')?.value ?? 0}s descanso`; return `${group.get('durationSeconds')?.value ?? '—'}s de duração · ${group.get('restSeconds')?.value ?? 0}s descanso`; }
-  exerciseChanged(group: FormGroup): void { if (this.kind(group) === 'STRENGTH') group.patchValue({ sets:3,repetitionMin:8,repetitionMax:12,durationSeconds:null }); else group.patchValue({ sets:null,repetitionMin:null,repetitionMax:null,durationSeconds:60,optionalLoadKg:null }); }
+  exerciseSummary(group: ItemForm): string { if (this.kind(group) === 'STRENGTH') return `${group.controls.sets.value ?? '—'} séries · ${group.controls.repetitionMin.value ?? '—'}–${group.controls.repetitionMax.value ?? '—'} repetições · ${group.controls.restSeconds.value ?? 0}s descanso`; return `${group.controls.durationSeconds.value ?? '—'}s de duração · ${group.controls.restSeconds.value ?? 0}s descanso`; }
+  exerciseChanged(group: ItemForm): void { if (this.kind(group) === 'STRENGTH') group.patchValue({ sets:3,repetitionMin:8,repetitionMax:12,durationSeconds:null }); else group.patchValue({ sets:null,repetitionMin:null,repetitionMax:null,durationSeconds:60,optionalLoadKg:null }); }
   openCatalog(dayIndex: number): void { this.catalogDayIndex.set(dayIndex); this.catalogSearch.set(''); this.kindFilter.set(''); this.catalogOpen.set(true); }
   closeCatalog(): void { this.catalogOpen.set(false); }
   openAssistant(): void { this.assistantOpen.set(true); }
@@ -188,39 +209,52 @@ export class PlanEditorComponent {
   toggleItem(dayIndex: number, itemIndex: number): void { const key = `${dayIndex}-${itemIndex}`; this.expandedItems.update(value => value.has(key) ? new Set() : new Set([key])); }
   save(): void { const payload = this.payload(); if (!payload) return; this.saving.set(true); this.api.savePlan(payload).subscribe({ next: plan => { this.load(plan); this.saving.set(false); this.show('Rascunho salvo e elegibilidade confirmada.', false); }, error: error => { this.saving.set(false); this.show(errorMessage(error), true); } }); }
   activate(): void { const payload = this.payload(); if (!payload) return; this.saving.set(true); this.api.savePlan(payload).pipe(switchMap(saved => this.api.activatePlan(saved))).subscribe({ next: plan => { this.load(plan); this.saving.set(false); this.show('Plano salvo, revalidado e ativado.', false); }, error: error => { this.saving.set(false); this.show(errorMessage(error), true); } }); }
-  revalidate(): void { const current = this.plan(); if (!current || current.status !== 'ACTIVE') return; this.saving.set(true); this.api.activatePlan(current).subscribe({ next: plan => { this.load(plan); this.saving.set(false); this.show('Inventário revalidado para o plano ativo.', false); }, error: error => { this.saving.set(false); this.show(errorMessage(error), true); } }); }
+  revalidate(): void { const current = this.plan(); if (!current || current.status !== 'ACTIVE') return; this.saving.set(true); this.api.revalidatePlan(current).subscribe({ next: plan => { this.load(plan); this.saving.set(false); this.show('Inventário revalidado para o plano ativo.', false); }, error: error => { this.saving.set(false); this.show(errorMessage(error), true); } }); }
   archive(): void { const current = this.plan(); if (!current) return; this.saving.set(true); this.api.archivePlan(current).subscribe({ next: plan => { this.load(plan); this.saving.set(false); this.settingsOpen.set(false); this.show('Plano arquivado.', false); }, error: error => { this.saving.set(false); this.show(errorMessage(error), true); } }); }
-  addAiSuggestion(): void { this.generateAiSuggestion(); }
   generateAiSuggestion(): void {
     const payload = this.payload();
     if (!payload || this.form.invalid || this.assistantLoading()) return;
     this.assistantLoading.set(true); this.pendingSuggestion.set(null);
     this.api.savePlan(payload).pipe(tap(saved => this.load(saved)), switchMap(saved => this.api.generatePlanSuggestion(saved.id))).subscribe({
-      next: suggestion => { this.pendingSuggestion.set(suggestion); this.assistantLoading.set(false); },
+      next: suggestion => { this.pendingSuggestion.set(suggestion); this.pendingSuggestionKey.set(crypto.randomUUID()); this.assistantLoading.set(false); },
       error: error => { this.assistantLoading.set(false); this.show(errorMessage(error), true); }
     });
   }
   applyAiSuggestion(): void {
     const current = this.plan(), suggestion = this.pendingSuggestion();
-    if (!current || !suggestion || this.assistantLoading()) return;
+    const idempotencyKey = this.pendingSuggestionKey();
+    if (!current || !suggestion || !idempotencyKey || this.assistantLoading()) return;
     const previousDays = current.days.length;
     const previousExercises = current.days.reduce((sum, day) => sum + day.items.length, 0);
     this.assistantLoading.set(true);
-    this.api.applySuggestion(current, suggestion.id, crypto.randomUUID()).subscribe({
-      next: plan => { this.load(plan); this.aiResult.set({ source:suggestion.source, days:Math.max(0, plan.days.length - previousDays), exercises:Math.max(0, plan.days.reduce((sum, day) => sum + day.items.length, 0) - previousExercises) }); this.pendingSuggestion.set(null); this.assistantLoading.set(false); this.assistantOpen.set(false); this.show('Sugestão aplicada ao rascunho para sua revisão.', false); },
+    this.api.applySuggestion(current, suggestion.id, idempotencyKey).subscribe({
+      next: plan => { this.load(plan); this.aiResult.set({ source:suggestion.source, days:Math.max(0, plan.days.length - previousDays), exercises:Math.max(0, plan.days.reduce((sum, day) => sum + day.items.length, 0) - previousExercises) }); this.discardAiSuggestion(); this.assistantLoading.set(false); this.assistantOpen.set(false); this.show('Sugestão aplicada ao rascunho para sua revisão.', false); },
       error: error => { this.assistantLoading.set(false); this.show(errorMessage(error), true); }
     });
   }
+  discardAiSuggestion(): void { this.pendingSuggestion.set(null); this.pendingSuggestionKey.set(null); }
   proposedExerciseCount(suggestion: AssistantSuggestion): number { return (suggestion.completion?.newDays ?? []).reduce((sum, day) => sum + day.items.length, 0) + (suggestion.completion?.existingDayAdditions ?? []).reduce((sum, day) => sum + day.items.length, 0); }
   isExpanded(index: number): boolean { return this.expandedDays().has(index); }
   toggleDay(index: number): void { this.expandedDays.set(new Set([index])); this.expandedItems.set(new Set()); }
-  expandAll(): void { this.expandedDays.set(new Set(this.days.length ? [0] : [])); }
-  collapseAll(): void { this.expandedDays.set(new Set()); }
   status(value: string): string { return { DRAFT:'Rascunho', ACTIVE:'Ativo', ARCHIVED:'Arquivado' }[value] ?? value; }
 
-  private load(plan: WorkoutPlan): void { this.plan.set(plan); this.form.patchValue({ name:plan.name,unitId:plan.unitId,goal:plan.goal,targetDaysPerWeek:plan.targetDaysPerWeek }); this.days.clear(); plan.days.forEach(day => this.days.push(this.dayGroup(day))); this.expandedDays.set(new Set(plan.days.length ? [0] : [])); this.loading.set(false); this.api.eligibleExercises(plan.unitId).subscribe({ next: page => this.exercises.set(page.content), error: error => this.show(errorMessage(error), true) }); }
-  private dayGroup(day: Partial<WorkoutDay>): FormGroup { return this.fb.group({ id:[day.id ?? null], position:[day.position ?? 1,[Validators.required,Validators.min(1),Validators.max(7)]], name:[day.name ?? '',Validators.required], items:this.fb.array((day.items ?? []).map(item => this.itemGroup(item))) }); }
-  private itemGroup(item: Partial<WorkoutDay['items'][number]>): FormGroup { return this.fb.group({ id:[item.id ?? null], exerciseId:[item.exerciseId ?? '',Validators.required], position:[item.position ?? 1,[Validators.required,Validators.min(1)]], sets:[item.sets ?? null], repetitionMin:[item.repetitionMin ?? null], repetitionMax:[item.repetitionMax ?? null], durationSeconds:[item.durationSeconds ?? null], restSeconds:[item.restSeconds ?? null], optionalLoadKg:[item.optionalLoadKg ?? null], notes:[item.notes ?? null] }); }
+  private load(plan: WorkoutPlan): void {
+    this.plan.set(plan);
+    this.form.patchValue({ name:plan.name,unitId:plan.unitId,goal:plan.goal,targetDaysPerWeek:plan.targetDaysPerWeek });
+    this.days.clear();
+    plan.days.forEach(day => this.days.push(this.dayGroup(day)));
+    this.expandedDays.set(new Set(plan.days.length ? [0] : []));
+    this.expandedItems.set(new Set());
+    this.loading.set(false);
+    if (this.loadedExerciseUnitId === plan.unitId) return;
+    this.loadedExerciseUnitId = plan.unitId;
+    this.api.eligibleExercises(plan.unitId).subscribe({
+      next: page => this.exercises.set(page.content),
+      error: error => { this.loadedExerciseUnitId = ''; this.show(errorMessage(error), true); }
+    });
+  }
+  private dayGroup(day: Partial<WorkoutDay>): DayForm { return this.fb.group({ id:[day.id ?? null], position:[day.position ?? 1,[Validators.required,Validators.min(1),Validators.max(7)]], name:[day.name ?? '',Validators.required], items:this.fb.array<ItemForm>((day.items ?? []).map(item => this.itemGroup(item))) }); }
+  private itemGroup(item: Partial<WorkoutDay['items'][number]>): ItemForm { return this.fb.group({ id:[item.id ?? null], exerciseId:[item.exerciseId ?? '',Validators.required], position:[item.position ?? 1,[Validators.required,Validators.min(1)]], sets:[item.sets ?? null], repetitionMin:[item.repetitionMin ?? null], repetitionMax:[item.repetitionMax ?? null], durationSeconds:[item.durationSeconds ?? null], restSeconds:[item.restSeconds ?? null], optionalLoadKg:[item.optionalLoadKg ?? null], notes:[item.notes ?? null] }); }
   private payload(): WorkoutPlan | null { const current = this.plan(); if (!current) return null; this.normalize(); return { ...current,name:this.form.controls.name.value ?? '',unitId:this.form.controls.unitId.value ?? '',goal:(this.form.controls.goal.value ?? 'GENERAL_FITNESS') as Goal,targetDaysPerWeek:this.targetDays(),days:this.form.controls.days.getRawValue() as WorkoutDay[] }; }
   private normalize(): void { this.days.controls.forEach((day,index) => { day.get('position')?.setValue(index + 1); this.items(index).controls.forEach((item,itemIndex) => item.get('position')?.setValue(itemIndex + 1)); }); }
   private show(message: string, failed: boolean): void { this.message.set(message); this.failed.set(failed); }

@@ -1,5 +1,10 @@
 package com.gymflow.assistant.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Map;
@@ -23,19 +28,27 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfiguration {
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper) throws Exception {
         return http.csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health/**", "/actuator/info", "/actuator/metrics/**", "/actuator/prometheus",
                     "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/api/v1/**").authenticated()
                 .anyRequest().denyAll())
-            .oauth2ResourceServer(resource -> resource.jwt(jwt -> jwt.jwtAuthenticationConverter(converter())))
+            .oauth2ResourceServer(resource -> resource
+                .jwt(jwt -> jwt.jwtAuthenticationConverter(converter()))
+                .authenticationEntryPoint((request, response, exception) ->
+                    writeProblem(objectMapper, request, response, HttpStatus.UNAUTHORIZED, "Autenticação necessária"))
+                .accessDeniedHandler((request, response, exception) ->
+                    writeProblem(objectMapper, request, response, HttpStatus.FORBIDDEN, "Acesso negado")))
             .build();
     }
 
@@ -60,5 +73,16 @@ public class SecurityConfiguration {
             }
             return new JwtAuthenticationToken(jwt, authorities, jwt.getSubject());
         };
+    }
+
+    private static void writeProblem(ObjectMapper mapper, HttpServletRequest request, HttpServletResponse response,
+                                     HttpStatus status, String title) throws IOException {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, title);
+        problem.setTitle(title);
+        problem.setType(URI.create("https://gymflow.local/problems/" + status.value()));
+        problem.setInstance(URI.create(request.getRequestURI()));
+        response.setStatus(status.value());
+        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        mapper.writeValue(response.getOutputStream(), problem);
     }
 }

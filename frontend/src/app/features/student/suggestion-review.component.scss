@@ -1,0 +1,12 @@
+:host { display: block; }
+.proposal-details { display: grid; gap: .75rem; margin-top: 1rem; }
+.proposal-day { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: rgba(7, 15, 29, .55); }
+.proposal-day-heading { display: flex; justify-content: space-between; gap: 1rem; padding: .75rem .9rem; border-bottom: 1px solid var(--line); }
+.proposal-day-heading span { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
+.proposal-exercise { display: grid; grid-template-columns: 48px 1fr; gap: .75rem; align-items: center; padding: .75rem .9rem; }
+.proposal-exercise + .proposal-exercise { border-top: 1px solid var(--line); }
+.proposal-exercise div { display: grid; gap: .15rem; min-width: 0; }
+.proposal-exercise span, .proposal-exercise small, .proposal-change small { color: var(--muted); }
+.proposal-change { display: grid; gap: .2rem; padding: .8rem .9rem; border: 1px solid var(--line); border-radius: 12px; }
+.proposal-change > span { color: var(--blue); font-size: .75rem; text-transform: uppercase; }
+.proposal-confirmation { color: var(--muted); font-size: .86rem; line-height: 1.45; }

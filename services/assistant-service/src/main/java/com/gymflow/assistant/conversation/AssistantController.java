@@ -30,20 +30,23 @@ public class AssistantController {
         return service.create(jwt.getSubject(), request.planId(), jwt.getTokenValue());
     }
 
-    @GetMapping("/conversations/{id}/messages")
-    public List<AssistantModels.MessageResponse> messages(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
-        return service.messages(jwt.getSubject(), id);
+    @GetMapping("/conversations/{conversationId}/messages")
+    public List<AssistantModels.MessageResponse> messages(@AuthenticationPrincipal Jwt jwt,
+                                                           @PathVariable UUID conversationId) {
+        return service.messages(jwt.getSubject(), conversationId);
     }
 
-    @PostMapping("/conversations/{id}/messages")
-    public AssistantModels.AssistantTurnResponse send(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+    @PostMapping("/conversations/{conversationId}/messages")
+    public AssistantModels.AssistantTurnResponse send(@AuthenticationPrincipal Jwt jwt,
+                                                       @PathVariable UUID conversationId,
                                                       @Valid @RequestBody AssistantModels.SendMessageRequest request) {
-        return service.send(jwt.getSubject(), id, request.text(), jwt.getTokenValue());
+        return service.send(jwt.getSubject(), conversationId, request.text(), jwt.getTokenValue());
     }
 
-    @GetMapping("/suggestions/{id}")
-    public AssistantModels.SuggestionResponse suggestion(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
-        return service.suggestion(jwt.getSubject(), id);
+    @GetMapping("/suggestions/{suggestionId}")
+    public AssistantModels.SuggestionResponse suggestion(@AuthenticationPrincipal Jwt jwt,
+                                                          @PathVariable UUID suggestionId) {
+        return service.suggestion(jwt.getSubject(), suggestionId);
     }
 
     @PostMapping("/plans/{planId}/suggestions") @ResponseStatus(HttpStatus.CREATED)

@@ -44,8 +44,6 @@ class AssistantServiceTest {
             List.of(new AssistantModels.ExistingDayAddition(dayId, List.of(item))));
         TrainingAssistantProvider.CompletionResult result = new TrainingAssistantProvider.CompletionResult(
             "Sugestão estruturada", false, List.of(), completion);
-        AssistantModels.ConversationResponse conversation = new AssistantModels.ConversationResponse(
-            UUID.randomUUID(), planId, Instant.now());
         AssistantModels.SuggestionResponse saved = new AssistantModels.SuggestionResponse(
             UUID.randomUUID(), planId, 4, "fingerprint", "AVAILABLE", AssistantModels.Source.DEMO,
             AssistantModels.SuggestionKind.WORKOUT_COMPLETION, result.reply(), List.of(), List.of(), completion,
@@ -56,8 +54,7 @@ class AssistantServiceTest {
         when(provider.complete(context)).thenReturn(result);
         when(validator.validateCompletion(result, context)).thenReturn(result);
         when(provider.source()).thenReturn(AssistantModels.Source.DEMO);
-        when(repository.createConversation("student", planId)).thenReturn(conversation);
-        when(repository.saveCompletionSuggestion(eq(conversation.id()), eq("student"), eq(planId), eq(4L),
+        when(repository.saveGeneratedCompletion(eq("student"), eq(planId), eq(4L),
             eq("fingerprint"), eq(AssistantModels.Source.DEMO), eq(result.reply()), eq(List.of()),
             eq(completion), any())).thenReturn(saved);
 
@@ -65,8 +62,7 @@ class AssistantServiceTest {
             new AssistantRateLimiter(10, 1), new SimpleMeterRegistry(), Duration.ofMinutes(10), 10);
 
         assertThat(service.generateForPlan("student", planId, "token")).isEqualTo(saved);
-        verify(repository).createConversation("student", planId);
-        verify(repository).saveCompletionSuggestion(eq(conversation.id()), eq("student"), eq(planId), eq(4L),
+        verify(repository).saveGeneratedCompletion(eq("student"), eq(planId), eq(4L),
             eq("fingerprint"), eq(AssistantModels.Source.DEMO), eq(result.reply()), eq(List.of()),
             eq(completion), any());
     }

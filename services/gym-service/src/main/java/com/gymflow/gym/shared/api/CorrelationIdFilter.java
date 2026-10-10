@@ -12,7 +12,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
 public class CorrelationIdFilter extends OncePerRequestFilter {
-    static final String HEADER = "X-Correlation-ID";
+    static final String HEADER = "X-Correlation-Id";
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
