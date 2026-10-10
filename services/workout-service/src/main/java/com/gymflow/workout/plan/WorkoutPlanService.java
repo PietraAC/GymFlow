@@ -35,7 +35,7 @@ public class WorkoutPlanService {
     }
 
     public PlanModels.PlanResponse create(String subject, PlanModels.CreatePlanRequest request, String token) {
-        catalog.validate(request.unitId(), Set.of(), token);
+        catalog.validateUnit(request.unitId(), token);
         return transactions.create(subject, request);
     }
 

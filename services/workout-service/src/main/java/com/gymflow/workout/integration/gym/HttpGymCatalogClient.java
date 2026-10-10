@@ -15,6 +15,19 @@ public class HttpGymCatalogClient implements GymCatalogClient {
     public HttpGymCatalogClient(RestClient gymRestClient) { this.client = gymRestClient; }
 
     @Override
+    public void validateUnit(UUID unitId, String bearerToken) {
+        try {
+            client.get().uri("/api/v1/units/{unitId}", unitId)
+                .headers(headers -> headers.setBearerAuth(bearerToken))
+                .retrieve().toBodilessEntity();
+        } catch (HttpClientErrorException.NotFound exception) {
+            throw new InvalidRequestException("A unidade selecionada não existe ou não está disponível");
+        } catch (RestClientException exception) {
+            throw unavailable(exception);
+        }
+    }
+
+    @Override
     public EligibilityResult validate(UUID unitId, Set<UUID> exerciseIds, String bearerToken) {
         try {
             EligibilityResult result = client.post().uri("/api/v1/units/{unitId}/exercise-eligibility", unitId)
@@ -26,9 +39,14 @@ public class HttpGymCatalogClient implements GymCatalogClient {
         } catch (HttpClientErrorException.NotFound exception) {
             throw new InvalidRequestException("A unidade selecionada não existe ou não está disponível");
         } catch (RestClientException exception) {
-            throw new DependencyUnavailableException(
-                "Não foi possível validar o catálogo no gym-service; a alteração não foi aplicada", exception);
+            throw unavailable(exception);
         }
     }
+
+    private DependencyUnavailableException unavailable(RestClientException exception) {
+        return new DependencyUnavailableException(
+            "Não foi possível validar o catálogo no gym-service; a alteração não foi aplicada", exception);
+    }
+
     private record EligibilityRequest(Set<UUID> exerciseIds) {}
 }

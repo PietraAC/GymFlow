@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,6 +37,32 @@ class WorkoutPlanServiceTest {
         MockitoAnnotations.openMocks(this);
         service = new WorkoutPlanService(transactions, catalog, new WorkoutPlanValidator(), suggestions,
             new WorkoutPlanMapper(), new SuggestionApplier());
+    }
+
+    @Test
+    void createValidatesTheSelectedUnitBeforeWriting() {
+        UUID unitId = UUID.randomUUID();
+        PlanModels.CreatePlanRequest request = new PlanModels.CreatePlanRequest(unitId, "Plano", Goal.STRENGTH, 3);
+        PlanModels.PlanResponse created = plan(UUID.randomUUID(), unitId, 0, List.of());
+        when(transactions.create("student-a", request)).thenReturn(created);
+
+        assertThat(service.create("student-a", request, "token")).isSameAs(created);
+
+        verify(catalog).validateUnit(unitId, "token");
+        verify(transactions).create("student-a", request);
+    }
+
+    @Test
+    void createDoesNotWriteWhenTheUnitCannotBeValidated() {
+        UUID unitId = UUID.randomUUID();
+        PlanModels.CreatePlanRequest request = new PlanModels.CreatePlanRequest(unitId, "Plano", Goal.STRENGTH, 3);
+        doThrow(new DependencyUnavailableException("gym-service indisponível", new RuntimeException()))
+            .when(catalog).validateUnit(unitId, "token");
+
+        assertThatThrownBy(() -> service.create("student-a", request, "token"))
+            .isInstanceOf(DependencyUnavailableException.class);
+
+        verify(transactions, never()).create(any(), any());
     }
 
     @Test
